@@ -5,9 +5,14 @@
 ||SSE4.2|AVX2|AVX512
 |Processor|Speedup|
 |[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|x2.8451|x4.4087|-|
-|[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|x2.7258|x4.2358|-
-|[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|x2.0651|x2.6140|x4.2704
+|[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|x2.7258|x4.2358|-|
+|[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|x2.4015<sup>?</sup>|x2.6498<sup>?</sup>|-|
+|[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|x2.0651<sup>?</sup>|x2.6140<sup>?</sup>|x4.2704<sup>?</sup>|
+
+
 <sup><sup><sup>_benchmarked against a 3840x2160 image_</sup></sup></sup>
+
+<sup><sup><sup>_?) Something weird is going on here and I'm not sure what. Will investigate and update these benchmarks once I find out what_</sup></sup></sup>
 
 This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
 
@@ -56,7 +61,8 @@ std::uint32_t AverageColorRGBA8(
 ```
 
 This is a pretty serial way to do it. Pick up a pixel, unpack it, add it to a sum.
-Each of these unpacks and sums are independent of each other can be parallelized with some SIMD trickery to do these unpacks and sums in chunks of 4, 8, even 16 pixels at once in parallel.
+
+Each of these unpacks and sums are pretty independent of each other can be parallelized with some SIMD trickery to do these unpacks and sums in chunks of 4, 8, even **16** pixels at once in parallel.
 
 There is no dedicated instruction for a horizontal sum of 8-bit elements within a vector register in any of the [x86 SIMD variations](https://en.wikipedia.org/wiki/Streaming_SIMD_Extensions#Later_versions) but the closest tautology is an instruction that gets the **S**um of **A**bsolute **D**ifferences of 8-bit elements within 64-bit lanes, and then horizontally adds these 8-bit differences into the lower 16-bits of the 64-bit lane. This is basically computing the [manhatten distance](https://en.wikipedia.org/wiki/Taxicab_geometry) between two vectors of eight 8-bit elements.
 ```
