@@ -1,5 +1,11 @@
 # qAverageColor [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+||||||
+|:-:|:-:|:-:|:-:|:-:|
+||SSE4.2|AVX2|AVX512
+|Processor|Speedup|
+|[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|x2.8451|x4.40877|-|
+
 This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
 
 The usual method to get the statistical average color of an image is pretty trivial:
