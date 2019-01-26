@@ -12,7 +12,7 @@
 #include <immintrin.h>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
+#include "stb_image.h"
 
 template< typename TimeT = std::chrono::nanoseconds >
 struct Bench
