@@ -2,6 +2,36 @@ app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
 var CurProj = app.newProject();
 var ColorLut = [[1,0,0],[0,1,0],[0,0,1],[1,1,1]];
 
+
+function hslToRgb(h, s, l) {
+	var r, g, b;
+	if (s == 0) {
+		r = g = b = l;
+	}
+	else {
+		var hue2rgb = function hue2rgb(p, q, t) {
+			if (t < 0) t += 1;
+			if (t > 1) t -= 1;
+			if (t < 1 / 6) return p + (q - p) * 6 * t;
+			if (t < 1 / 2) return q;
+			if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+			return p;
+		}
+
+		var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+		var p = 2 * l - q;
+		r = hue2rgb(p, q, h + 1 / 3);
+		g = hue2rgb(p, q, h);
+		b = hue2rgb(p, q, h - 1 / 3);
+	}
+
+	return [
+		Math.floor(r * 0xFF),
+		Math.floor(g * 0xFF),
+		Math.floor(b * 0xFF)
+	];
+}
+
 function GenComp(Config) {
 	/// Config
 	var Name = Config.Name;
@@ -36,7 +66,7 @@ function GenComp(Config) {
 		50                              // framerate
 	);
 	CurComp.hideShyLayers = true;
-	CurComp.bgColor = [1,1,1];	
+	CurComp.bgColor = [1,1,1];
 	// "Structs"
 	function Pixel( Color ) {
 		this.Channels = Color;
@@ -185,13 +215,13 @@ function GenComp(Config) {
 			.property("Contents");
 
 		var ResBoxRect = ResBoxShapeContents.addProperty("ADBE Vector Shape - Rect")
+		// ResBoxRect.property("ADBE Vector Rect Position")
+		// 	.setValue([(RegisterWidth / 2 - 1) * CellSize, 0]);
 		ResBoxRect.property("ADBE Vector Rect Size")
 			.setValue([
-				CellSize * CellCount+ CellSize * (1/10),
+				CellSize * CellCount + CellSize * (1/10),
 				CellSize + CellSize * (1/10)
 			]);
-		ResBoxRect.property("ADBE Vector Rect Position")
-			.setValue([(RegisterWidth / 2 - 1) * CellSize + CellSize / 2, 0]);
 		ResBoxRect.property("ADBE Vector Rect Roundness")
 			.setValue(CellSize *  (1/10));
 
@@ -199,7 +229,7 @@ function GenComp(Config) {
 			.addProperty("ADBE Vector Graphic - Fill")
 			.property("ADBE Vector Fill Color")
 			.setValue([0.33, 0.33, 0.33]);
-			// Border
+		// Border
 		var Stroke = ResBoxShapeContents.addProperty("ADBE Vector Graphic - Stroke");
 		Stroke.property("ADBE Vector Stroke Width").setValue(1.5);
 		Stroke.property("ADBE Vector Stroke Color").setValue([0,0,0]);
@@ -208,7 +238,12 @@ function GenComp(Config) {
 		var ValueLabel = CurComp.layers.addText(Value);
 		ValueLabel.name = Name + "-Label";
 		ValueLabel.parent = RegShapeLayer;
-		ValueLabel.position.setValue([CellCount * CellSize / 2,CellSize/4]);
+		ValueLabel.position.setValue(
+			[
+				0,
+				CellSize / 4
+			]
+		);
 		ValueLabel.shy = true;
 		
 		LabelProp = ValueLabel.property("Source Text");
@@ -235,7 +270,7 @@ function GenComp(Config) {
 		var SumNames = ["Red","Green","Blue","Alpha"];
 		Sums.push(new Accumulator(SumNames[i] + "-Sum", 3, 0,ColorLut[i]))
 		Sums[i].root.position.setValue([
-			(CurComp.width/2) - (4 * 3 * CellSize)/2 + i * (CellSize + 1) * 3,
+			(CurComp.width/2) - (4 * 3 * CellSize)/2 + ( i * (4 * CellSize) ),
 			CurComp.height/4
 		]);
 	}
@@ -243,12 +278,12 @@ function GenComp(Config) {
 	// Generate pixel grid
 	var Pixels = [];
 	for (var i = 0; i < PixelCount; ++i) {
-		var CurPixel = new Pixel([Math.floor(generateRandomNumber() * 0xFF),Math.floor(generateRandomNumber() * 0xFF),Math.floor(generateRandomNumber() * 0xFF),Math.floor(generateRandomNumber() * 0xFF)]);
+		var CurPixel = new Pixel(hslToRgb(i / PixelCount,1.0,0.5).concat([0xFF]));
 		CurPixel.root.name = "Pixel-" + i;
 		CurPixel.root.position.setValue(
 			[
-				( CurComp.width / 2) - (((CellSize * 4) * PixelGrid[0])/2) + ((i%PixelGrid[0]) * CellSize * 4),
-				( CurComp.height - CurComp.height / 5) + (Math.floor(i / PixelGrid[1]) * CellSize)
+				( CurComp.width / 2) - (( (CellSize * 4) * PixelGrid[0])/2) + (Math.floor(i%PixelGrid[0] * CellSize * 4)),
+				( CurComp.height - CurComp.height / 3) + (Math.floor(i / PixelGrid[1]) * CellSize)
 			]
 		);
 		Pixels.push(CurPixel);
@@ -275,17 +310,23 @@ function GenComp(Config) {
 		CurComp.markerProperty.setValueAtTime(TimeIn,Marker);
 		//  Move pixels to register
 		for (var j = 0; j < IterMethod.Width; ++j) {
+
 			MethodState.Pixels[MethodState.CurPixel + j].root.position.setValueAtTime(
 				TimeIn,
 				MethodState.Pixels[MethodState.CurPixel + j].root.position.value
 			);
 			MethodState.Pixels[MethodState.CurPixel + j].root.position.setValueAtTime(
-				TimeIn + IterDuration * 1/4, MethodState.Register.root.position.value
+				TimeIn + IterDuration * 1/4,
+				[
+					MethodState.Register.root.position.value[0] + j * (4 * CellSize),
+					MethodState.Register.root.position.value[1]
+				]
 			);
+
+			// Smoothen keyframes
 			for (var k = 1; k <= MethodState.Pixels[MethodState.CurPixel + j].root.position.numKeys; ++k) {
 				MethodState.Pixels[MethodState.CurPixel + j].root.position.setInterpolationTypeAtKey(k,
-					KeyframeInterpolationType.BEZIER,
-					KeyframeInterpolationType.BEZIER
+					KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER
 				);
 				MethodState.Pixels[MethodState.CurPixel + j].root.position.setTemporalEaseAtKey(
 					k,
@@ -314,7 +355,26 @@ var SSEMethod = {
 	Name: "SSE",
 	Width: 4,
 	Proc: function( TimeIn, Duration, Pixels, Config, Sums ){
-		
+		for (var k = 0; k < 4; ++k) { // Current pixel
+			for (var i = 0; i < 4; ++i) { // Current channel
+				// Process channel
+				// Arming keys
+				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn,100);
+				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn,[100,100]);
+				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn,[0,0]);
+				Sums[i].label.setValueAtTime(TimeIn,Sums[i].Value);
+				// Main keys
+				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),100);
+				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),[125,125]); 
+				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),[0,Config.CellSize/2]);
+				Sums[i].Value += Pixels[0].Channels[i];
+				Sums[i].label.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),Sums[i].Value);
+				// Outro
+				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),0);
+				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),[0,0]);
+				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),[0,Config.CellSize*2]);
+			}
+		}
 	}
 }
 
@@ -342,7 +402,6 @@ var SerialMethod = {
 		}
 	}
 }
-
 var Average = {
 	Name: "Average",
 	Width: 0,
@@ -365,12 +424,28 @@ var Serial = GenComp({
 	Name: "Serial",
 	Size: [520, 360],
 	RegisterWidth: 4,
-	CellSize: 36,
+	CellSize: 32,
 	IterDuration: 0.5,
 	Alignments: [
 		Average,
 		SerialMethod,
 	],
-	PixelCount: 9,
-	PixelGrid: [3,3]
+	PixelCount: 13,
+	PixelGrid: [4,3]
+});
+
+// Sad
+var SAD = GenComp({
+	Name: "SAD",
+	Size: [520, 360],
+	RegisterWidth: 16,
+	CellSize: 24,
+	IterDuration: 0.5,
+	Alignments: [
+		Average,
+		SerialMethod,
+		SSEMethod
+	],
+	PixelCount: 13,
+	PixelGrid: [4,3]
 });
