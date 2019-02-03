@@ -294,5 +294,7 @@ int main( int argc, char* argv[])
 		"Speedup: %f\n",
 		std::get<0>(Serial).count() / static_cast<double>(std::get<0>(Fast).count())
 	);
+
+	stbi_image_free(Pixels);
 	return EXIT_SUCCESS;
 }
