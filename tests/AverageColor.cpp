@@ -126,7 +126,7 @@ std::uint32_t qAverageColorRGBA8(
 	// 8 pixels at a time! (AVX/AVX2)
 	// | RSum64 | GSum64 | BSum64 | ASum64 |
 	__m256i RGBASum64  = _mm256_add_epi64(
-		_mm512_extracti64x4_epi64(RGBASum64x2,0),
+		_mm512_castsi512_si256(RGBASum64x2),
 		_mm512_extracti64x4_epi64(RGBASum64x2,1)
 	);
 #else
