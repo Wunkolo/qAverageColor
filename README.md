@@ -1,14 +1,14 @@
 # qAverageColor [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) (WIP)
 
-||||||
+|||||||
 |:-:|:-:|:-:|:-:|:-:|:-:|
-||Serial|SSE4.2|AVX2|AVX512
-||![](media/Pat-Serial.gif)|![](media/Pat-SSE.gif)|![](media/Pat-AVX2.gif)|![](media/Pat-AVX512.gif)
+||Serial|SSE4.2|AVX2|AVX512|
+||![](media/Pat-Serial.gif)|![](media/Pat-SSE.gif)|![](media/Pat-AVX2.gif)|![](media/Pat-AVX512.gif)|
 |Processor|Speedup|
-|[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|-|x2.8451|x4.4087|_N/A_
-|[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|-|x2.7258|x4.2358|_N/A_
-|[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|-|x2.4015|x2.6498|_N/A_
-|[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704
+|[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|-|x2.8451|x4.4087|_N/A_|
+|[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|-|x2.7258|x4.2358|_N/A_|
+|[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|-|x2.4015|x2.6498|_N/A_|
+|[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704|
 
 
 This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
