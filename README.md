@@ -1,7 +1,7 @@
 # qAverageColor [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) (WIP)
 
-|||||||
-|:-:|:-:|:-:|:-:|:-:|:-:|
+||||||
+|:-:|:-:|:-:|:-:|:-:|
 ||Serial|SSE4.2|AVX2|AVX512|
 ||![](media/Pat-Serial.gif)|![](media/Pat-SSE.gif)|![](media/Pat-AVX2.gif)|![](media/Pat-AVX512.gif)|
 |Processor|Speedup|
@@ -11,7 +11,7 @@
 |[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704|
 
 
-This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
+This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator. Inspired by the ["sum of bytes" write-up](http://0x80.pl/notesen/2018-11-18-sse-sumbytes-part2.html) by [Wojciech Muła](https://twitter.com/pshufb).
 
 The usual method to get the statistical average color of an image is pretty trivial:
 
@@ -61,7 +61,8 @@ This is a pretty serial way to do it. Pick up a pixel, unpack it, add it to a su
 
 Each of these unpacks and sums are pretty independent of each other can be parallelized with some SIMD trickery to do these unpacks and sums in chunks of 4, 8, even **16** pixels at once in parallel.
 
-There is no dedicated instruction for a horizontal sum of 8-bit elements within a vector register in any of the [x86 SIMD variations](https://en.wikipedia.org/wiki/Streaming_SIMD_Extensions#Later_versions) but the closest tautology is an instruction that gets the **S**um of **A**bsolute **D**ifferences of 8-bit elements within 64-bit lanes, and then horizontally adds these 8-bit differences into the lower 16-bits of the 64-bit lane. This is basically computing the [manhatten distance](https://en.wikipedia.org/wiki/Taxicab_geometry) between two vectors of eight 8-bit elements.
+There is no dedicated instruction for a horizontal sum of 8-bit elements within a vector register in any of the [x86 SIMD variations](https://en.wikipedia.org/wiki/Streaming_SIMD_Extensions#Later_versions).
+The closest tautology is an instruction that gets the **S**um of **A**bsolute **D**ifferences of **8**-bit elements within 64-bit lanes, and then horizontally adds these 8-bit differences into the lower 16-bits of the 64-bit lane. This is basically computing the [manhatten distance](https://en.wikipedia.org/wiki/Taxicab_geometry) between two vectors of eight 8-bit elements.
 ```
 AD(A,B) = ABS(A - B) # Absolute difference
 
@@ -84,7 +85,8 @@ SAD(X,Y) =
 	= 56
 ```
 
-`psadbw` seems like a pretty niche instruction at first(you're probably wondering why such a specific series of operations exist as an official x86 instruction) but it has had plenty of usage since the original SSE days to aid in [motion estimation](https://en.wikipedia.org/wiki/Sum_of_absolute_differences). The trick here is recognizing that the absolute difference between an _unsigned_ number and _zero_, is just the unsigned number again. The _sum_ of the absolute difference between a vector of unsigned values and vector-0 is a way to extract the a horizontal addition feature of SAD for this particular use.
+`psadbw` may seem like a pretty niche instruction at first. You're probably wondering why such a specific series of operations is implemented as an official x86 instruction but it has had plenty of usage since the original SSE days to aid in block-based [motion estimation](https://en.wikipedia.org/wiki/Sum_of_absolute_differences) for video encoding.
+The trick here is recognizing that the absolute difference between an _unsigned_ number and _zero_, is just the unsigned number again. The _sum_ of the absolute difference between a vector of unsigned values and vector-0 is a way to extract just the horizontal addition step of SAD for this particular use.
 
 ```
 (A is unsigned)
@@ -105,19 +107,23 @@ SAD(X,Y) =
 
 This kind of utilizaton of `psadbw` will allow a vector of 8 consecutive bytes to be horizontally summed into the low 16-bits of a 64-bit lane, and this 16-bit value can then be directly added to a largeer 64-bit accumulator. With this, a chunk of RGBA color values can be loaded into a vector, unpacked so that all their R,G,B,A bytes are grouped into lanes of 8 bytes, and then these color channels can be summed up into a 64-bit accumulator to later get their average.
 
-Usually, taking the average of a large amount of values can cause some worry for over-flow, but with instructions like `psadbw` that operate on 64-bit lanes, it lends itself to the usage of 64-bit accumulators which are very resistant to overflow. An individual channel would need `2^64 / 2^8 == 72057594037927936` pixels (almost 69 billion megapixels) with a value of `0xFF` for that color channel to overflow its 64-bit accumulator, and with an image like that you'd probably already know the average color just by looking at it. Pretty resistant I'd say.
+Usually, taking the average of a large amount of values can cause some worry for overflow. With instructions like `psadbw` that operate on 64-bit lanes, it lends itself to the usage of 64-bit accumulators which are very resistant to overflow.
+An individual channel would need `2^64 / 2^8 == 72057594037927936` pixels (almost 69 billion megapixels) with a value of `0xFF` for that color channel to overflow its 64-bit accumulator, and with an image like that you'd probably already know the average color just by looking at it.
+Pretty resistant I'd say.
 
-An SSE vector-register is 128 bits, meaning it will be able to hold two 64-bit accumulators per register so one SSE register can be used to accumulate the sum of all `|Red|Green|` values and another register for `|Blue|Alpha|`.
+An SSE vector-register is 128 bits, it will be able to hold two 64-bit accumulators per vector-register so one SSE register can be used to accumulate the sum of `|Red|Green|` values and another vector-register for the `|Blue|Alpha|` sums.
+
+The main loop would look something like this:
 
  1. Load in a chunk of 4 32-bit pixels into a 128-bit register
     * `|RGBA|RGBA|RGBA|RGBA|`
  2. Shuffle the 8-bit channels within the vector so that the upper 64-bits of the register has one channel, and the lower 64-bits has another.
-    * There is a bit of "waste" as you only have four bytes of a particular channel and 8-bytes within a lane, these values can be set to zero by passing any value with the upper bit set to `_mm_shuffle_epi8`(such as `-1`).
+    * There is a bit of "waste" as you only have four bytes of a particular channel and 8-bytes within a lane, these values can be set to zero by passing any value with the upper bit set to `_mm_shuffle_epi8`(such as `-1`). This way these bytes will not effect the sum.
     * `|0R0R0R0R|0G0G0G0G|` or `|0B0B0B0B|0A0A0A0A|`
     * `|0000RRRR|0000GGGG|` or `|0000BBBB|0000AAAA|` works too
-    * Any permutation in particular works so long as the unused elements are 0
- 3. `_mm_sad_epu` the vector, getting two 16-bit sums, add this to your 64-bit accumulators
-    * `|000000ΣR|000000ΣG|` or `|000000ΣB|000000ΣA|` 16-bit sums
+    * Any permutation in particular works so long as the unused elements do not effect the total sum and are 0
+ 3. `_mm_sad_epu` the vector, getting two 16-bit sums within each of the 64-bit lanes, add this to the 64-bit accumulators
+    * `|000000ΣR|000000ΣG|` or `|000000ΣB|000000ΣA|` 16-bit sums, within the upper and lower 64-bit halfs of the 128-bit register
 
 
 A `psadbw`-accelerated pixel-summing loop that handles four pixels at a time would look something like this.
@@ -172,7 +178,8 @@ for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 }
 ```
 
-After doing chunks of 4 at a time, it can handle the unaligned pixels(there will only ever be 3 or less left-over) by extracting the 64-bit accumulators from the vector-registers, and falling back to the serial method, thought here are some slight optimizations that can be done here too. `bextr` can extract continuous bits a little quicker without doing a shift-and-a-mask to get the upper color channels. x86 has [register aliasing for the lower two bytes of its general purpose registers](http://flint.cs.yale.edu/cs421/papers/x86-asm/x86-registers.png) though so a `bextr` would probably be overhandling for the lower color channels in the lower two bytes.
+After doing chunks of 4 at a time, it can handle the unaligned pixels(there will only ever be 3 or less left-over) by extracting the 64-bit accumulators from the vector-registers, and falling back to the usual serial method.
+Though there are some slight optimizations that can be done here too. `bextr` can extract continuous bits a little quicker without doing a shift-and-a-mask to get the upper color channels. x86 has [register aliasing for the lower two bytes of its general purpose registers](http://flint.cs.yale.edu/cs421/papers/x86-asm/x86-registers.png) though so a `bextr` would probably be overhandling for the lower color channels in the lower bytes.
 
 ```cpp
 // Extract the 64-bit accumulators from the vector registers of the previous loop
@@ -214,7 +221,9 @@ Fast  : #10121AFF |      2701641ns
 Speedup: 2.628236
 ```
 
-With [AVX2](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions) this algorithm can be updated to process **8** pixels a time, then **4** pixels a time before resorting to the serial algorithm for unaligned data. With much larger **256-bit** vectors, all four 64-bit accumulators can reside within a single AVX2 register. Though, AVX2 is almost just an alias for two regular 128-bit SSE registers, meaning cross-lane(shuffling elements across the full width of a 256-bit register, rather than just within the upper and lower 128-bit halfs) can be tricky. A solution to this is to shuffle first within the 128-bit lanes, and then using a cross-lane shuffle to further unpack the channels into continuous values before computing a `_mm256_sad_epu8` on each of the four 64-bit lanes.
+With [AVX2](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions) this algorithm can be updated to process **8** pixels a time, then **4** pixels a time before resorting to the serial algorithm for unaligned data(there will only be 7 or less unaligned pixels, think [greedy algorithms](https://en.wikipedia.org/wiki/Greedy_algorithm)). With much larger **256-bit** vectors, all four 64-bit accumulators can reside within a single AVX2 register.
+Though, AVX2's massive 256-bit vector-registers is almost just an alias for two regular 128-bit SSE registers from before with the additional benefit of being able to compactly handle two 128-bit registers with 1 instruction.
+This also means that cross-lane arithmetic(shuffling elements across the full width of a 256-bit register, rather than staying within the upper and lower 128-bit halfs) can be tricky as crossing the 128-bit boundary needs some special attention. A solution to this is to shuffle first within the upper and lower 128-bit lanes, and then using a much larger cross-lane shuffle to further unpack the channels into continuous values before computing a `_mm256_sad_epu8` on each of the four 64-bit lanes.
 
 ```cpp
 // Vector of four 64-bit accumulators for Red,Green,Blue, and Alpha
@@ -277,9 +286,19 @@ for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 ```
 
 
-This implementation so far(AVX2,SSE,and Serial) with the same 3840x2160 image as before on an [i7-7500U](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u) shows an approximate **x4.1** increase in performance over the serial method. It now takes less than a **forth** of the time to calculate the color average over the serial version.
+This implementation so far(AVX2,SSE,and Serial) with the same 3840x2160 image as before on an [i7-7500U](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u) shows an approximate **x4.1** increase in performance over the serial method. It now takes less than a **forth** of the time to calculate the color average over the serial version!
 ```
 Serial: #10121AFF |      7436508ns
 Fast  : #10121AFF |      1802768ns
 Speedup: 4.125050
 ```
+
+
+### Other formats?
+
+Not explored in this little write-up are other pixel formats such as the three-channel RGB with no alpha or just a 2-channel `RG` image.
+In theory other formats will work with the same principle as the `RGBA` format one so long as you correctly account for your shuffling depending on where you are at in your pixel processing(the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels). If your bytes were organized `|RGB|RGB|RGB|RGB|...` and you had an algorithm that can process 4 or 8 at a time, then you will only need a handful of shuffle-masks to account for all the possible permutations of `|RGB|` pixels you can fit into a 4,8,16-element wide vector before calling `*_sad_epu8`.
+Most of the busy-work is just unpacking the pixels and grouping up all the channels into 8-byte lanes.
+
+### Acknowledgements
+[Wojciech Muła](https://twitter.com/pshufb) for the inspiration of [exploiting vpsadbw to allow for quick horizontal byte addition](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html)
