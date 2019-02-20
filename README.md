@@ -26,34 +26,30 @@ The usual method to get the statistical average color of an image is pretty triv
 Something like this:
 ```cpp
 std::uint32_t AverageColorRGBA8(
-	std::uint32_t Pixels[], // RGBA8 pixels, 8 bits per channel, 32-bits per pixel
+	std::uint32_t Pixels[],
 	std::size_t Count
 )
 {
-	// Accumulators for each individual channel
 	std::uint64_t RedSum, GreenSum, BlueSum, AlphaSum;
 	RedSum = GreenSum = BlueSum = AlphaSum = 0;
 	for( std::size_t i = 0; i < Count; ++i )
 	{
 		const std::uint32_t& CurColor = Pixels[i];
-		// Unpack the channel value, add it to the accumulator
-		RedSum   += static_cast<std::uint8_t>( CurColor >> 24 );
-		GreenSum += static_cast<std::uint8_t>( CurColor >> 16 );
-		BlueSum  += static_cast<std::uint8_t>( CurColor >>  8 );
-		AlphaSum += static_cast<std::uint8_t>( CurColor >>  0 );
+		AlphaSum += static_cast<std::uint8_t>( CurColor >> 24 );
+		BlueSum  += static_cast<std::uint8_t>( CurColor >> 16 );
+		GreenSum += static_cast<std::uint8_t>( CurColor >>  8 );
+		RedSum   += static_cast<std::uint8_t>( CurColor >>  0 );
 	}
-	// Divide each value by the number of pixels to get the average
 	RedSum   /= Count;
 	GreenSum /= Count;
 	BlueSum  /= Count;
 	AlphaSum /= Count;
 
-	// Interleave these average channel values back into an RGBA8 pixel.
 	return
-		(static_cast<std::uint32_t>( (std::uint8_t)  RedSum ) << 24 ) |
-		(static_cast<std::uint32_t>( (std::uint8_t)GreenSum ) << 16 ) |
-		(static_cast<std::uint32_t>( (std::uint8_t) BlueSum ) <<  8 ) |
-		(static_cast<std::uint32_t>( (std::uint8_t)AlphaSum ) <<  0 );
+		(static_cast<std::uint32_t>( (std::uint8_t)AlphaSum ) << 24 ) |
+		(static_cast<std::uint32_t>( (std::uint8_t) BlueSum ) << 16 ) |
+		(static_cast<std::uint32_t>( (std::uint8_t)GreenSum ) <<  8 ) |
+		(static_cast<std::uint32_t>( (std::uint8_t)  RedSum ) <<  0 );
 }
 ```
 
@@ -111,19 +107,19 @@ Usually, taking the average of a large amount of values can cause some worry for
 An individual channel would need `2^64 / 2^8 == 72057594037927936` pixels (almost 69 billion megapixels) with a value of `0xFF` for that color channel to overflow its 64-bit accumulator, and with an image like that you'd probably already know the average color just by looking at it.
 Pretty resistant I'd say.
 
-An SSE vector-register is 128 bits, it will be able to hold two 64-bit accumulators per vector-register so one SSE register can be used to accumulate the sum of `|Red|Green|` values and another vector-register for the `|Blue|Alpha|` sums.
+An SSE vector-register is 128 bits, it will be able to hold two 64-bit accumulators per vector-register so one SSE register can be used to accumulate the sum of `|Green|Red|` values and another vector-register for the `|Alpha|Blue|` sums.
 
 The main loop would look something like this:
 
  1. Load in a chunk of 4 32-bit pixels into a 128-bit register
-    * `|RGBA|RGBA|RGBA|RGBA|`
+    * `|ABGR|ABGR|ABGR|ABGR|`
  2. Shuffle the 8-bit channels within the vector so that the upper 64-bits of the register has one channel, and the lower 64-bits has another.
     * There is a bit of "waste" as you only have four bytes of a particular channel and 8-bytes within a lane, these values can be set to zero by passing any value with the upper bit set to `_mm_shuffle_epi8`(such as `-1`). This way these bytes will not effect the sum.
-    * `|0R0R0R0R|0G0G0G0G|` or `|0B0B0B0B|0A0A0A0A|`
-    * `|0000RRRR|0000GGGG|` or `|0000BBBB|0000AAAA|` works too
+    * `|0G0G0G0G|0R0R0R0R|` or `|0A0A0A0A|0B0B0B0B|`
+    * `|0000GGGG|0000RRRR|` or `|0000AAAA|0000BBBB|` works too
     * Any permutation in particular works so long as the unused elements do not effect the total sum and are 0
  3. `_mm_sad_epu` the vector, getting two 16-bit sums within each of the 64-bit lanes, add this to the 64-bit accumulators
-    * `|000000ΣR|000000ΣG|` or `|000000ΣB|000000ΣA|` 16-bit sums, within the upper and lower 64-bit halfs of the 128-bit register
+    * `|0000ΣG16|0000ΣR16|` or `|0000ΣA16|0000ΣB16|` 16-bit sums, within the upper and lower 64-bit halfs of the 128-bit register
 
 
 A `psadbw`-accelerated pixel-summing loop that handles four pixels at a time would look something like this.
@@ -134,23 +130,22 @@ __m128i RedGreenSum64  = _mm_setzero_si128();
 // | 64-bit Blue Sum | 64-bit Alpha Sum |
 __m128i BlueAlphaSum64 = _mm_setzero_si128();
 
-// Four pixels at a time
+// 4 pixels at a time! (SSE)
 for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 {
-	// Load 4 32-bit pixels into a 128-bit register
 	const __m128i QuadPixel = _mm_stream_load_si128((__m128i*)&Pixels[i]);
 	RedGreenSum64 = _mm_add_epi64( // Add it to the 64-bit accumulators
 		RedGreenSum64,
-		_mm_sad_epu8( // compute | 0+R+0+R+0+R+0+R | 0+G+0+G+0+G+0+G |
-			_mm_shuffle_epi8( // Shuffle the bytes to | 0R0R0R0R | 0G0G0G0G |
+		_mm_sad_epu8( // compute | 0+G+0+G+0+G+0+G | 0+R+0+R+0+R+0+R |
+			_mm_shuffle_epi8( // Shuffle the bytes to | 0G0G0G0G | 0R0R0R0R |
 				QuadPixel,
 				_mm_set_epi8(
-					// Reds
-					-1,15,-1, 7,
-					-1,11,-1, 3,
-					// Greens
-					-1,14,-1, 6,
-					-1,10,-1, 2
+					// Green
+					-1,13,-1, 5,
+					-1, 9,-1, 1,
+					// Red
+					-1,12,-1, 4,
+					-1, 8,-1, 0
 				)
 			),
 			// SAD against 0, which just returns the original unsigned value
@@ -159,16 +154,16 @@ for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 	);
 	BlueAlphaSum64 = _mm_add_epi64( // Add it to the 64-bit accumulators
 		BlueAlphaSum64,
-		_mm_sad_epu8( // compute | 0+B+0+B+0+B+0+B | 0+A+0+A+0+A+0+A |
-			_mm_shuffle_epi8( // Shuffle the bytes to | 0B0B0B0B | 0A0A0A0A |
+		_mm_sad_epu8( // compute | 0+A+0+A+0+A+0+A | 0+B+0+B+0+B+0+B |
+			_mm_shuffle_epi8( // Shuffle the bytes to | 0A0A0A0A | 0B0B0B0B |
 				QuadPixel,
 				_mm_set_epi8(
-					// Blue
-					-1,13,-1, 5,
-					-1, 9,-1, 1,
 					// Alpha
-					-1,12,-1, 4,
-					-1, 8,-1, 0
+					-1,15,-1, 7,
+					-1,11,-1, 3,
+					// Blue
+					-1,14,-1, 6,
+					-1,10,-1, 2
 				)
 			),
 			// SAD against 0, which just returns the original unsigned value
@@ -183,22 +178,22 @@ Though there are some slight optimizations that can be done here too. `bextr` ca
 
 ```cpp
 // Extract the 64-bit accumulators from the vector registers of the previous loop
-std::uint64_t RedSum64   = _mm_extract_epi64(RedGreenSum64,1);
-std::uint64_t GreenSum64 = _mm_cvtsi128_si64(RedGreenSum64);
-std::uint64_t BlueSum64  = _mm_extract_epi64(BlueAlphaSum64,1);
-std::uint64_t AlphaSum64 = _mm_cvtsi128_si64(BlueAlphaSum64);
+std::uint64_t RedSum64 = _mm_cvtsi128_si64(RedGreenSum64);
+std::uint64_t GreenSum64   = _mm_extract_epi64(RedGreenSum64,1);
+std::uint64_t BlueSum64 = _mm_cvtsi128_si64(BlueAlphaSum64);
+std::uint64_t AlphaSum64  = _mm_extract_epi64(BlueAlphaSum64,1);
 
 // New serial method
 for( ; i < Count; ++i )
 {
 	const std::uint32_t CurColor = Pixels[i];
-	RedSum64   += _bextr_u64( CurColor, 24, 8);
-	GreenSum64 += _bextr_u64( CurColor, 16, 8);
+	AlphaSum64 += _bextr_u64( CurColor, 24, 8);
+	BlueSum64  += _bextr_u64( CurColor, 16, 8);
 	// I'm being oddly specific here to make it obvious for the
 	// compiler to do some ah/bh/ch/dh register trickery
 	//                                              V
-	BlueSum64  += static_cast<std::uint8_t>( CurColor >>  8 );
-	AlphaSum64 += static_cast<std::uint8_t>( CurColor       );
+	GreenSum64 += static_cast<std::uint8_t>( CurColor >>  8 );
+	RedSum64   += static_cast<std::uint8_t>( CurColor       );
 }
 // Average
 RedSum64   /= Count;
@@ -208,10 +203,10 @@ AlphaSum64 /= Count;
 
 // Interleave
 return
-	(static_cast<std::uint32_t>( (std::uint8_t)  RedSum64 ) << 24) |
-	(static_cast<std::uint32_t>( (std::uint8_t)GreenSum64 ) << 16) |
-	(static_cast<std::uint32_t>( (std::uint8_t) BlueSum64 ) <<  8) |
-	(static_cast<std::uint32_t>( (std::uint8_t)AlphaSum64 ) <<  0);
+	(static_cast<std::uint32_t>( (std::uint8_t)AlphaSum64 ) << 24 ) |
+	(static_cast<std::uint32_t>( (std::uint8_t) BlueSum64 ) << 16 ) |
+	(static_cast<std::uint32_t>( (std::uint8_t)GreenSum64 ) <<  8 ) |
+	(static_cast<std::uint32_t>( (std::uint8_t)  RedSum64 ) <<  0 );
 ```
 
 This implementation so far with a 3840x2160 image on an [i7-7500U](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u) shows an approximate **x2.6** increase in performance over the serial method. It now takes less than half the time to process an image now.
@@ -228,46 +223,46 @@ This also means that cross-lane arithmetic(shuffling elements across the full wi
 ```cpp
 // Vector of four 64-bit accumulators for Red,Green,Blue, and Alpha
 __m256i RGBASum64  = _mm256_setzero_si256();
+// 8 pixels at a time! (AVX/AVX2)
 for( std::size_t j = i/8; j < Count/8; j++, i += 8 )
 {
-	// Loads in 8 pixels at once
 	const __m256i OctaPixel = _mm256_loadu_si256((__m256i*)&Pixels[i]);
 	// Shuffle within 128-bit lanes
-	// | RGBARGBARGBARGBA | RGBARGBARGBARGBA |
-	// | RRRRGGGGBBBBAAAA | RRRRGGGGBBBBAAAA |
+	// | ABGRABGRABGRABGR | ABGRABGRABGRABGR |
+	// | AAAABBBBGGGGRRRR | AAAABBBBGGGGRRRR |
 	// Setting up for 64-bit lane sad_epu8
 	__m256i Deinterleave = _mm256_shuffle_epi8(
 		OctaPixel,
 		_mm256_broadcastsi128_si256(
 			_mm_set_epi8(
-				// Reds
-				15,11, 7, 3,
-				// Greens
-				14,10, 6, 2,
-				// Blue
-				13, 9, 5, 1,
 				// Alpha
+				15,11, 7, 3,
+				// Blue
+				14,10, 6, 2,
+				// Green
+				13, 9, 5, 1,
+				// Red
 				12, 8, 4, 0
 			)
 		)
 	);
 	// Cross-lane shuffle
-	// | RRRRGGGGBBBBAAAA | RRRRGGGGBBBBAAAA |
-	// | RRRRRRRR | GGGGGGGG | BBBBBBBB | AAAAAAAA |
+	// | AAAABBBBGGGGRRRR | AAAABBBBGGGGRRRR |
+	// | AAAAAAAA | BBBBBBBB | GGGGGGGG | RRRRRRRR |
 	Deinterleave = _mm256_permutevar8x32_epi32(
 		Deinterleave,
 		_mm256_set_epi32(
-			// Red
-			7, 3,
-			// Green
-			6, 2,
-			// Blue
-			5, 1,
 			// Alpha
+			7, 3,
+			// Blue
+			6, 2,
+			// Green
+			5, 1,
+			// Red
 			4, 0
 		)
 	);
-	// | RSum64 | GSum64 | BSum64 | ASum64 |
+	// | ASum64 | BSum64 | GSum64 | RSum64 |
 	RGBASum64 = _mm256_add_epi64(
 		RGBASum64,
 		_mm256_sad_epu8(
@@ -278,8 +273,8 @@ for( std::size_t j = i/8; j < Count/8; j++, i += 8 )
 }
 
 // Pass the accumulators onto the next SSE loop from above
-__m128i RedGreenSum64  = _mm256_extractf128_si256(RGBASum64,1);
-__m128i BlueAlphaSum64 = _mm256_castsi256_si128(RGBASum64);
+__m128i BlueAlphaSum64  = _mm256_extractf128_si256(RGBASum64,1);
+__m128i RedGreenSum64 = _mm256_castsi256_si128(RGBASum64);
 for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 {
 ...
@@ -297,8 +292,23 @@ Speedup: 4.125050
 ### Other formats?
 
 Not explored in this little write-up are other pixel formats such as the three-channel RGB with no alpha or just a 2-channel `RG` image.
-In theory other formats will work with the same principle as the `RGBA` format one so long as you correctly account for your shuffling depending on where you are at in your pixel processing(the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels). If your bytes were organized `|RGB|RGB|RGB|RGB|...` and you had an algorithm that can process 4 or 8 at a time, then you will only need a handful of shuffle-masks to account for all the possible permutations of `|RGB|` pixels you can fit into a 4,8,16-element wide vector before calling `*_sad_epu8`.
-Most of the busy-work is just unpacking the pixels and grouping up all the channels into 8-byte lanes.
+In theory other formats will work with the same principle as the `RGBA` format one so long as you specially account for your shuffling. Depending on where you are at in your pixel processing(the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels), if your bytes were organized `|RGB|RGB|RGB|RGB|...` and had a vector-register with a width of 16-bytes, you will only need a handful of shuffle-masks to account for all the possible permutations of how a stream of `|RGB|` pixels can fit into a 4,8,16-element wide vector before calling `*_sad_epu8`.
+
+```
+Note how different the bytes look when taking regular 16-byte chunks out of a
+stream of 3-byte pixels.
+Different shuffle patterns must be used to account for each case
+
+ >RGBRGBRGBRGBRGBRG<
+0:|---------------|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+                  >BRGBRGBRGBRGBRGBR<
+1:                 |---------------|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+                                   >GBRGBRGBRGBRGBRGB<
+2:                                  |---------------|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+```
 
 ### Acknowledgements
 [Wojciech Muła](https://twitter.com/pshufb) for the inspiration of [exploiting vpsadbw to allow for quick horizontal byte addition](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html)
