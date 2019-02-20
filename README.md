@@ -288,26 +288,38 @@ Fast  : #10121AFF |      1802768ns
 Speedup: 4.125050
 ```
 
+### RGB? RG?
 
-### Other formats?
-
-Not explored in this little write-up are other pixel formats such as the three-channel RGB with no alpha or just a 2-channel `RG` image.
-In theory other formats will work with the same principle as the `RGBA` format one so long as you specially account for your shuffling. Depending on where you are at in your pixel processing(the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels), if your bytes were organized `|RGB|RGB|RGB|RGB|...` and had a vector-register with a width of 16-bytes, you will only need a handful of shuffle-masks to account for all the possible permutations of how a stream of `|RGB|` pixels can fit into a 4,8,16-element wide vector before calling `*_sad_epu8`.
-
+Not explored in this little write-up are other pixel formats such as the three-channel `RGB` with no alpha or just a 2-channel `RG` image.
+Other formats will work with the same principle as the `RGBA` format one so long as you account for the proper shuffling needed.
+Depending on where you are at in your pixel processing, consider the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels
+If your bytes were organized `|RGB|RGB|RGB|RGB|...` and a vector-register with a width of 16-bytes, then you'll always be taking `16/3 = 15.3333...` `RGB` pixels at once. And every **3**rd chunk (`0.333.. * 3 = 1.0`) is when the period repeats. So only 3 shuffle-masks are ever needed depending on where your index `i` lands on the array. Some ASCII art might help visualize it
 ```
-Note how different the bytes look when taking regular 16-byte chunks out of a
+Note how different the bytes align when taking regular 16-byte chunks out of a
 stream of 3-byte pixels.
-Different shuffle patterns must be used to account for each case
+Different shuffle patterns must be used to account for each case:
 
  >RGBRGBRGBRGBRGBRG<
-0:|---------------|
-  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+0:|---SIMD Reg.---|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
                   >BRGBRGBRGBRGBRGBR<
-1:                 |---------------|
-  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+1:                 |---SIMD Reg.---|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
                                    >GBRGBRGBRGBRGBRGB<
-2:                                  |---------------|
-  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+2:                                  |---SIMD Reg.---|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+                   This is the same as iteration 0  >RGBRGBRGBRGBRGBRG<
+3:                                                   |---SIMD Reg.---|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
+```
+
+You can also process much larger **48**-byte (`lcd(16,3)`) aligned chunks to have more productive iterations at a higher granularity:
+
+```
+Now you don't have to worry about byte-level alignment and can do all the shuffles at once
+ >RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB<
+0:|---SIMD Reg.---||---SIMD Reg.---||---SIMD Reg.---|
+  RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
 ```
 
 ### Acknowledgements
