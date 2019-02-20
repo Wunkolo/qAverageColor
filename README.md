@@ -4,21 +4,24 @@
 |:-:|:-:|:-:|:-:|:-:|
 ||Serial|SSE4.2|AVX2|AVX512|
 ||![](media/Pat-Serial.gif)|![](media/Pat-SSE.gif)|![](media/Pat-AVX2.gif)|![](media/Pat-AVX512.gif)|
-|Processor|Speedup|
+|Processor||Speedup|
 |[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|-|x2.8451|x4.4087|_N/A_|
 |[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|-|x2.7258|x4.2358|_N/A_|
 |[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|-|x2.4015|x2.6498|_N/A_|
 |[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704|
 
+This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
 
-This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator. Inspired by the ["sum of bytes" write-up](http://0x80.pl/notesen/2018-11-18-sse-sumbytes-part2.html) by [Wojciech Muła](https://twitter.com/pshufb).
 
-The usual method to get the statistical average color of an image is pretty trivial:
+Inspired by the ["SIMDized sum of all bytes in the array" write-up](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html) by [Wojciech Muła](https://twitter.com/pshufb).
+
+The usual method to get the statistical average of each color channel in an image is pretty trivial:
 
  1. Load in a pixel
  2. Unpack the individual color channels
- 3. Sum the channel values into a large sum value
- 4. Divide these sums by the number of total pixels
+ 3. Sum the channel values into a an accumulator
+ 4. When you've summed them all, divide these sums by the number of total pixels
+ 5. Interleave these averages into a new color value
 
 
 ![](/media/Serial.gif)
@@ -288,10 +291,11 @@ Fast  : #10121AFF |      1802768ns
 Speedup: 4.125050
 ```
 
-### RGB? RG?
+### RGB8? RG8? R8?
 
-Not explored in this little write-up are other pixel formats such as the three-channel `RGB` with no alpha or just a 2-channel `RG` image.
+Not explored in this little write-up are other pixel formats such as the three-channel `RGB` with no alpha or just a 2-channel `RG` image or even just a monochrome "R8" image of just one channel.
 Other formats will work with the same principle as the `RGBA` format one so long as you account for the proper shuffling needed.
+
 Depending on where you are at in your pixel processing, consider the different cases of how you can take a 16-byte chunk out of a stream of 3-byte `RGB` pixels
 If your bytes were organized `|RGB|RGB|RGB|RGB|...` and a vector-register with a width of 16-bytes, then you'll always be taking `16/3 = 15.3333...` `RGB` pixels at once. And every **3**rd chunk (`0.333.. * 3 = 1.0`) is when the period repeats. So only 3 shuffle-masks are ever needed depending on where your index `i` lands on the array. Some ASCII art might help visualize it
 ```
@@ -321,6 +325,8 @@ Now you don't have to worry about byte-level alignment and can do all the shuffl
 0:|---SIMD Reg.---||---SIMD Reg.---||---SIMD Reg.---|
   RGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGBRGB...
 ```
+Once you got your sums, then it's just a division and interleave to turn these statistical averages into a new color value.
 
-### Acknowledgements
-[Wojciech Muła](https://twitter.com/pshufb) for the inspiration of [exploiting vpsadbw to allow for quick horizontal byte addition](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html)
+For RG8, the same principle applies but much more trivial since 2-byte pixels naturally align themselves with power-of-two register widths.
+
+For R8, the summing step reduces to just be a sum-of-bytes which is a topic precisely [covered by Wojciech Muła](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html). After getting the sum, divide by the number of pixels to get the statistical average.
