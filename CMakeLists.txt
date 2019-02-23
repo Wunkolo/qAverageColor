@@ -19,17 +19,31 @@ if( MSVC )
 	add_compile_options( /W3 )
 	add_compile_options( /Gv )
 elseif( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" )
-	add_compile_options( -march=native )
-	add_compile_options( -Ofast )
 	add_compile_options( -Wall )
 	add_compile_options( -Wextra )
 	# Force colored diagnostic messages in Ninja's output
 	if( CMAKE_GENERATOR STREQUAL "Ninja" )
-	    add_compile_options( -fdiagnostics-color=always )
+		add_compile_options( -fdiagnostics-color=always )
 	endif()
 endif()
 
-add_executable(
+add_library(
 	qAverageColor
+	STATIC
+	source/qAverageColor.cpp
+)
+target_include_directories(
+	qAverageColor
+	PUBLIC
+	include
+)
+
+add_executable(
+	AverageColor
 	tests/AverageColor.cpp
+)
+target_link_libraries(
+	AverageColor
+	PRIVATE
+	qAverageColor
 )
