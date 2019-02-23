@@ -3,20 +3,23 @@
 #include <qAverageColor.hpp>
 #include "Bench.hpp"
 
-#include <array>
+#include <vector>
 
-constexpr std::size_t PixelCount = 1'000'000;
+// 10 megapixels
+constexpr std::size_t PixelCount = 10'000'000;
 constexpr std::uint32_t TestValue = 0xBEEFFEEB;
 
 int  main( int argc, char* argv[])
 {
-	std::array<std::uint32_t,PixelCount> TestPixels;
-	TestPixels.fill(TestValue);
+	std::vector<std::uint32_t> TestPixels(
+		PixelCount,
+		TestValue
+	);
 
 	const auto Serial = Bench<>::BenchResult(
 		AverageColorRGBA8,
 		TestPixels.data(),
-		TestPixels.size()
+		PixelCount
 	);
 	std::printf(
 		"Serial: #%08X | %12zuns\n",
@@ -26,7 +29,7 @@ int  main( int argc, char* argv[])
 	const auto Fast = Bench<>::BenchResult(
 		qAverageColorRGBA8,
 		TestPixels.data(),
-		TestPixels.size()
+		PixelCount
 	);
 	std::printf(
 		"Fast  : #%08X | %12zuns\n",
