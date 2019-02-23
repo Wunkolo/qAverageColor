@@ -85,7 +85,7 @@ SAD(X,Y) =
 ```
 
 `psadbw` may seem like a pretty niche instruction at first. You're probably wondering why such a specific series of operations is implemented as an official x86 instruction but it has had plenty of usage since the original SSE days to aid in block-based [motion estimation](https://en.wikipedia.org/wiki/Sum_of_absolute_differences) for video encoding.
-The trick here is recognizing that the absolute difference between an _unsigned_ number and _zero_, is just the unsigned number again. The _sum_ of the absolute difference between a vector of unsigned values and vector-0 is a way to extract just the horizontal addition step of SAD for this particular use.
+The trick here is recognizing that the absolute difference between an _unsigned_ number and _zero_, is just the unsigned number again. The _sum_ of the absolute difference between a vector of unsigned values and vector-0 is a way to extract just the horizontal-addition step of SAD for this particular use.
 
 ```
 (A is unsigned)
@@ -98,16 +98,16 @@ SAD(X,Y) =
 	AD(X[0],0) + AD(X[1],0) + AD(X[2],0) + AD(X[3],0) +
 	AD(X[4],0) + AD(X[5],0) + AD(X[6],0) + AD(X[7],0)
 	=
-	X[0] + X[1] + X[2] + X[3] +	X[4] + X[5] + X[6] + X[7]
+	X[0] + X[1] + X[2] + X[3] + X[4] + X[5] + X[6] + X[7]
 	=
 	1 + 2 + 3 + 4 + 5 + 6 + 7
 	= 28
 ```
 
-This kind of utilizaton of `psadbw` will allow a vector of 8 consecutive bytes to be horizontally summed into the low 16-bits of a 64-bit lane, and this 16-bit value can then be directly added to a largeer 64-bit accumulator. With this, a chunk of RGBA color values can be loaded into a vector, unpacked so that all their R,G,B,A bytes are grouped into lanes of 8 bytes, and then these color channels can be summed up into a 64-bit accumulator to later get their average.
+This kind of utilizaton of `psadbw` will allow a vector of 8 consecutive bytes to be horizontally summed into the low 16-bits of a 64-bit lane, and this 16-bit value can then be directly added to a larger 64-bit accumulator. With this, a chunk of RGBA color values can be loaded into a vector, unpacked so that all their R,G,B,A bytes are grouped into 64-bit lanes, `psadbw` these 64-bit lanes to get 16-bit sums, and then accumulate these sums into a 64-bit accumulator to later get their average.
 
 Usually, taking the average of a large amount of values can cause some worry for overflow. With instructions like `psadbw` that operate on 64-bit lanes, it lends itself to the usage of 64-bit accumulators which are very resistant to overflow.
-An individual channel would need `2^64 / 2^8 == 72057594037927936` pixels (almost 69 billion megapixels) with a value of `0xFF` for that color channel to overflow its 64-bit accumulator, and with an image like that you'd probably already know the average color just by looking at it.
+An individual channel would need `2^64 / 2^8 == 72057594037927936` pixels (almost 69 billion megapixels) with a value of `0xFF` for that color channel to overflow its 64-bit accumulator.
 Pretty resistant I'd say.
 
 An SSE vector-register is 128 bits, it will be able to hold two 64-bit accumulators per vector-register so one SSE register can be used to accumulate the sum of `|Green|Red|` values and another vector-register for the `|Alpha|Blue|` sums.
@@ -117,10 +117,10 @@ The main loop would look something like this:
  1. Load in a chunk of 4 32-bit pixels into a 128-bit register
     * `|ABGR|ABGR|ABGR|ABGR|`
  2. Shuffle the 8-bit channels within the vector so that the upper 64-bits of the register has one channel, and the lower 64-bits has another.
-    * There is a bit of "waste" as you only have four bytes of a particular channel and 8-bytes within a lane, these values can be set to zero by passing any value with the upper bit set to `_mm_shuffle_epi8`(such as `-1`). This way these bytes will not effect the sum.
+    * There is a bit of "waste" as you only have four bytes of a particular channel and 8-bytes within a lane. These values can be set to zero by passing a shuffle-index with the upper bit set when using `_mm_shuffle_epi8`(A value such as `-1` will get `pshufb` to write `0`). This way these bytes will not effect the sum.
     * `|0G0G0G0G|0R0R0R0R|` or `|0A0A0A0A|0B0B0B0B|`
     * `|0000GGGG|0000RRRR|` or `|0000AAAA|0000BBBB|` works too
-    * Any permutation in particular works so long as the unused elements do not effect the total sum and are 0
+    * Any permutation in particular works so long as the unused elements do not effect the horizontal sum and are 0
  3. `_mm_sad_epu` the vector, getting two 16-bit sums within each of the 64-bit lanes, add this to the 64-bit accumulators
     * `|0000ΣG16|0000ΣR16|` or `|0000ΣA16|0000ΣB16|` 16-bit sums, within the upper and lower 64-bit halfs of the 128-bit register
 
