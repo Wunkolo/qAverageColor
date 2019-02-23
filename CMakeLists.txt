@@ -47,3 +47,13 @@ target_link_libraries(
 	PRIVATE
 	qAverageColor
 )
+
+add_executable(
+	BigBench
+	tests/BigBench.cpp
+)
+target_link_libraries(
+	BigBench
+	PRIVATE
+	qAverageColor
+)

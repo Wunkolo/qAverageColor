@@ -20,7 +20,7 @@ int main( int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	auto Serial = Bench<>::BenchResult(
+	const auto Serial = Bench<>::BenchResult(
 		AverageColorRGBA8,
 		(std::uint32_t*)Pixels,
 		Width * Height
@@ -30,7 +30,7 @@ int main( int argc, char* argv[])
 		std::get<1>(Serial),
 		std::get<0>(Serial).count()
 	);
-	auto Fast = Bench<>::BenchResult(
+	const auto Fast = Bench<>::BenchResult(
 		qAverageColorRGBA8,
 		(std::uint32_t*)Pixels,
 		Width * Height
