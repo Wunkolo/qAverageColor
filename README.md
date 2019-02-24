@@ -84,8 +84,6 @@ SAD(X,Y) =
 	= 56
 ```
 
-![](/media/SAD.gif)
-
 `psadbw` may seem like a pretty niche instruction at first. You're probably wondering why such a specific series of operations is implemented as an official x86 instruction but it has had plenty of usage since the original SSE days to aid in block-based [motion estimation](https://en.wikipedia.org/wiki/Sum_of_absolute_differences) for video encoding.
 The trick here is recognizing that the absolute difference between an _unsigned_ number and _zero_, is just the unsigned number again. The _sum_ of the absolute difference between a vector of unsigned values and vector-0 is a way to extract just the horizontal-addition step of SAD for this particular use.
 
@@ -127,7 +125,9 @@ The main loop would look something like this:
     * `|0000ΣG16|0000ΣR16|` or `|0000ΣA16|0000ΣB16|` 16-bit sums, within the upper and lower 64-bit halfs of the 128-bit register
 
 
-A `psadbw`-accelerated pixel-summing loop that handles four pixels at a time would look something like this.
+A `psadbw`-accelerated pixel-summing loop that handles four pixels at a time would look something like this:
+
+![](media/SAD.gif)
 
 ```cpp
 // | 64-bit Red Sum | 64-bit Green Sum |
