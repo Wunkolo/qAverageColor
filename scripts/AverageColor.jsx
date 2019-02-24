@@ -1,6 +1,6 @@
 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
 var CurProj = app.newProject();
-var ColorLut = [[1,0,0],[0,1,0],[0,0,1],[1,1,1]];
+var ColorLut = [[1,1,1],[0,0,1], [0,1,0],[1,0,0]];
 
 
 function hslToRgb(h, s, l) {
@@ -267,7 +267,7 @@ function GenComp(Config) {
 	var Sums = [];
 	
 	for (var i = 0; i < 4; ++i) {
-		var SumNames = ["Red","Green","Blue","Alpha"];
+		var SumNames = ["Alpha","Blue","Green","Red"];
 		Sums.push(new Accumulator(SumNames[i] + "-Sum", 3, 0,ColorLut[i]))
 		Sums[i].root.position.setValue([
 			(CurComp.width/2) - (4 * 3 * CellSize)/2 + ( i * (4 * CellSize) ),
@@ -279,11 +279,14 @@ function GenComp(Config) {
 	var Pixels = [];
 	for (var i = 0; i < PixelCount; ++i) {
 		var CurPixel = new Pixel(hslToRgb(i / PixelCount,1.0,0.5).concat([0xFF]));
+		var x = Math.floor(i % PixelGrid[0]);
+		var y = Math.floor(i / PixelGrid[1]);
 		CurPixel.root.name = "Pixel-" + i;
-		CurPixel.root.position.setValue(
+		CurPixel.root.position.setValueAtTime(
+			0,
 			[
-				( CurComp.width / 2) - (( (CellSize * 4) * PixelGrid[0])/2) + (Math.floor(i%PixelGrid[0] * CellSize * 4)),
-				( CurComp.height - CurComp.height / 3) + (Math.floor(i / PixelGrid[1]) * CellSize)
+				( CurComp.width / 2) - (( (CellSize * 4) * PixelGrid[0])/2) + (x * CellSize * 4),
+				( CurComp.height - CurComp.height / 3) + (y * CellSize)
 			]
 		);
 		Pixels.push(CurPixel);
