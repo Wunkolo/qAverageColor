@@ -1,6 +1,6 @@
 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
 var CurProj = app.newProject();
-var ColorLut = [[1,1,1],[0,0,1], [0,1,0],[1,0,0]];
+var ColorLut = [[1,0,0],[0,1,0],[0,0,1],[1,1,1]];
 
 
 function hslToRgb(h, s, l) {
@@ -267,7 +267,7 @@ function GenComp(Config) {
 	var Sums = [];
 	
 	for (var i = 0; i < 4; ++i) {
-		var SumNames = ["Alpha","Blue","Green","Red"];
+		var SumNames = ["Red","Green","Blue","Alpha"];
 		Sums.push(new Accumulator(SumNames[i] + "-Sum", 3, 0,ColorLut[i]))
 		Sums[i].root.position.setValue([
 			(CurComp.width/2) - (4 * 3 * CellSize)/2 + ( i * (4 * CellSize) ),
@@ -319,12 +319,25 @@ function GenComp(Config) {
 				MethodState.Pixels[MethodState.CurPixel + j].root.position.value
 			);
 			MethodState.Pixels[MethodState.CurPixel + j].root.position.setValueAtTime(
-				TimeIn + IterDuration * 1/4,
+				TimeIn + IterDuration * 1/3,
 				[
-					MethodState.Register.root.position.value[0] + j * (4 * CellSize),
+					MethodState.Register.root.position.value[0] + ((RegisterWidth/4) - 1 - j) * (4 * CellSize),
 					MethodState.Register.root.position.value[1]
 				]
 			);
+
+			// Swap pixel endians
+			for( var k = 0; k < 4; ++k )
+			{
+				MethodState.Pixels[MethodState.CurPixel + j].shapes[k].position.setValueAtTime(
+					TimeIn,
+					MethodState.Pixels[MethodState.CurPixel + j].shapes[k].position.valueAtTime(TimeIn,false)
+				);
+				MethodState.Pixels[MethodState.CurPixel + j].shapes[k].position.setValueAtTime(
+					TimeIn + IterDuration * 1/4,
+					[(3 - k) * CellSize,0]
+				);
+			}
 
 			// Smoothen keyframes
 			for (var k = 1; k <= MethodState.Pixels[MethodState.CurPixel + j].root.position.numKeys; ++k) {
@@ -428,7 +441,7 @@ var Serial = GenComp({
 	Size: [520, 360],
 	RegisterWidth: 4,
 	CellSize: 32,
-	IterDuration: 0.5,
+	IterDuration: 1.0,
 	Alignments: [
 		Average,
 		SerialMethod,
@@ -443,7 +456,7 @@ var SAD = GenComp({
 	Size: [520, 360],
 	RegisterWidth: 16,
 	CellSize: 24,
-	IterDuration: 0.5,
+	IterDuration: 1.0,
 	Alignments: [
 		Average,
 		SerialMethod,
