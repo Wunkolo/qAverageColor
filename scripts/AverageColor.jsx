@@ -1,3 +1,10 @@
+/*
+This is a terrible "just work already" script made to get after effects
+to generate visuals for the algorithm. I am beyond sick at the fact that I made
+this and can't wait to finally take the step of just making an SVG animation
+library so I don't have to put up with AE nuances anymore - Wunkolo 2/23/2019
+*/
+
 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
 var CurProj = app.newProject();
 var ColorLut = [[1,0,0],[0,1,0],[0,0,1],[1,1,1]];
@@ -373,23 +380,110 @@ var SSEMethod = {
 	Width: 4,
 	Proc: function( TimeIn, Duration, Pixels, Config, Sums ){
 		for (var k = 0; k < 4; ++k) { // Current pixel
+			// Arming Keys
 			for (var i = 0; i < 4; ++i) { // Current channel
-				// Process channel
-				// Arming keys
 				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn,100);
 				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn,[100,100]);
 				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn,[0,0]);
 				Sums[i].label.setValueAtTime(TimeIn,Sums[i].Value);
-				// Main keys
-				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),100);
-				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),[125,125]); 
-				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),[0,Config.CellSize/2]);
-				Sums[i].Value += Pixels[0].Channels[i];
-				Sums[i].label.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 2/4),Sums[i].Value);
-				// Outro
-				Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),0);
-				Pixels[k].shapes[i].scale.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),[0,0]);
-				Pixels[k].shapes[i].anchorPoint.setValueAtTime(TimeIn + ((i+1)/4) * (Duration * 4/4),[0,Config.CellSize*2]);
+			}
+			// Main Keys
+			for (var i = 0; i < 4; ++i) {
+				// I am not proud of this
+				var CollapseOffset =
+					(Config.RegisterWidth - 1 - ((k * 4) - i))
+					* (Config.CellSize)
+					+ ( (i & 1 == 1 ? 1:0) * ( 6 * Config.CellSize) );
+				CollapseOffset -= ((Config.RegisterWidth - 1) * Config.CellSize);
+				// Red Green
+				if( i < 2 )
+				{
+					// Shuffle into lanes
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 1/8) + ((i+1)/4)/16,
+						[CollapseOffset + ( k * Config.CellSize),0]
+					);
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 2/8),
+						[CollapseOffset + ( k * Config.CellSize),0]
+					);
+
+					// "Sum" lanes(Outro)
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 3/8) + ((i+1)/4)/16,
+						[CollapseOffset,0]
+					);
+					Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + (Duration * 3/8),100);
+
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 4/8) + ((i+1)/4)/16,
+						[CollapseOffset,Config.CellSize * 2]
+					);
+					Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + (Duration * 4/8),0);
+
+					Sums[i].Value += Pixels[k].Channels[i];
+					Sums[i].label.setValueAtTime(TimeIn + (Duration * 4/8) + ((i+1)/4)/16,Sums[i].Value);
+				}
+				// Blue Alpha
+				else
+				{
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 1/8),
+						[CollapseOffset + ( k * Config.CellSize),Config.CellSize]
+					);
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 2/8),
+						[CollapseOffset + ( k * Config.CellSize),Config.CellSize]
+					);
+					
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 3/8),
+						[CollapseOffset + ( k * Config.CellSize),Config.CellSize]
+					);
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 4/8),
+						[CollapseOffset + ( k * Config.CellSize),Config.CellSize]
+					);
+					Sums[i].Value += Pixels[k].Channels[i];
+					Sums[i].label.setValueAtTime(TimeIn + (Duration * 4/8) + ((i+1)/4)/16,Sums[i].Value);
+				}
+			}
+
+			for (var i = 0; i < 4; ++i) {
+				var CollapseOffset =
+					(Config.RegisterWidth - 1 - ((k * 4) - i))
+					* (Config.CellSize)
+					+ ( (i & 1 == 1 ? 1:0) * ( 6 * Config.CellSize) );
+				CollapseOffset -= ((Config.RegisterWidth - 1) * Config.CellSize);
+				// Blue Alpha
+				if( i >= 2 )
+				{
+					// Shuffle into lanes
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 5/8),
+						[CollapseOffset + ((k - 4) * Config.CellSize),0]
+					);
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 6/8),
+						[CollapseOffset + ((k - 4) * Config.CellSize),0]
+					);
+
+					// "Sum" lanes(Outro)
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 7/8),
+						[CollapseOffset - (4 * Config.CellSize),0]
+					);
+					Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + (Duration * 7/8),100);
+
+					Pixels[k].shapes[i].anchorPoint.setValueAtTime(
+						TimeIn + (Duration * 8/8),
+						[CollapseOffset - (4 * Config.CellSize),Config.CellSize * 2]
+					);
+					Pixels[k].shapes[i].opacity.setValueAtTime(TimeIn + (Duration * 8/8),0);
+
+					Sums[i].Value += Pixels[k].Channels[i];
+					Sums[i].label.setValueAtTime(TimeIn + (Duration * 8/8),Sums[i].Value);
+				}
 			}
 		}
 	}
@@ -457,7 +551,7 @@ var SAD = GenComp({
 	Size: [520, 360],
 	RegisterWidth: 16,
 	CellSize: 32,
-	IterDuration: 1.0,
+	IterDuration: 1.5,
 	Alignments: [
 		Average,
 		SerialMethod,
