@@ -536,7 +536,7 @@ var Serial = GenComp({
 	Size: [520, 360],
 	RegisterWidth: 4,
 	CellSize: 32,
-	IterDuration: 1.0,
+	IterDuration: 2/3,
 	Alignments: [
 		Average,
 		SerialMethod,
@@ -551,7 +551,7 @@ var SAD = GenComp({
 	Size: [520, 360],
 	RegisterWidth: 16,
 	CellSize: 32,
-	IterDuration: 1.5,
+	IterDuration: 4/3,
 	Alignments: [
 		Average,
 		SerialMethod,
