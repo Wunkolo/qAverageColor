@@ -444,8 +444,6 @@ var SSEMethod = {
 						TimeIn + (Duration * 4/8),
 						[CollapseOffset + ( k * Config.CellSize),Config.CellSize]
 					);
-					Sums[i].Value += Pixels[k].Channels[i];
-					Sums[i].label.setValueAtTime(TimeIn + (Duration * 4/8) + ((i+1)/4)/16,Sums[i].Value);
 				}
 			}
 
