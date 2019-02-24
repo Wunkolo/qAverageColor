@@ -59,11 +59,12 @@ function GenComp(Config) {
 	// Comp Items
 	var CurComp = CurProj.items.addComp(
 		Name,
-		Math.floor(Size[0]),            // Width
-		Math.floor(Size[1]),            // Height
-		1,                              // Pixel aspect
-		TotalIterations * IterDuration, // Duration
-		50                              // framerate
+		Math.floor(Size[0]),           // Width
+		Math.floor(Size[1]),           // Height
+		1,                             // Pixel aspect
+		TotalIterations * IterDuration // Duration
+		+ IterDuration,                // and some end-padding for the results
+		50                             // framerate
 	);
 	CurComp.hideShyLayers = true;
 	CurComp.bgColor = [1,1,1];
@@ -446,8 +447,8 @@ var Serial = GenComp({
 		Average,
 		SerialMethod,
 	],
-	PixelCount: 13,
-	PixelGrid: [4,3]
+	PixelCount: 12,
+	PixelGrid: [3,3]
 });
 
 // Sad
@@ -455,13 +456,13 @@ var SAD = GenComp({
 	Name: "SAD",
 	Size: [520, 360],
 	RegisterWidth: 16,
-	CellSize: 24,
+	CellSize: 32,
 	IterDuration: 1.0,
 	Alignments: [
 		Average,
 		SerialMethod,
 		SSEMethod
 	],
-	PixelCount: 13,
-	PixelGrid: [4,3]
+	PixelCount: 15,
+	PixelGrid: [4,4]
 });
