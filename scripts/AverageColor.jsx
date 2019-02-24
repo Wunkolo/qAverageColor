@@ -263,7 +263,7 @@ function GenComp(Config) {
 		LabelProp.setValue(LabelText);
 	}
 	var MainRegister = new Register("MainRegister",RegisterWidth);
-	MainRegister.root.position.setValue([(CurComp.width/2) - ((CellSize*RegisterWidth)/2),CurComp.height/2])
+	MainRegister.root.position.setValue([(CurComp.width/2) - ((CellSize*RegisterWidth)/2) + (CellSize/2),CurComp.height/2])
 	
 	var Sums = [];
 	
@@ -286,8 +286,8 @@ function GenComp(Config) {
 		CurPixel.root.position.setValueAtTime(
 			0,
 			[
-				( CurComp.width / 2) - (( (CellSize * 4) * PixelGrid[0])/2) + (x * CellSize * 4),
-				( CurComp.height - CurComp.height / 3) + (y * CellSize)
+				( CurComp.width / 2) - (( (CellSize * 4) * PixelGrid[0])/2) + (x * CellSize * 4) + (CellSize/2),
+				( CurComp.height - CurComp.height / 3) + (y * CellSize) + (CellSize/2)
 			]
 		);
 		Pixels.push(CurPixel);
