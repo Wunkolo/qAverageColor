@@ -14,6 +14,7 @@ set( CMAKE_VERBOSE_MAKEFILE ON )
 set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
 ### Optimizations
+set( CMAKE_BUILD_TYPE Release )
 if( MSVC )
 	add_compile_options( /arch:AVX2 )
 	add_compile_options( /W3 )
