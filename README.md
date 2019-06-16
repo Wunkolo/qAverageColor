@@ -334,3 +334,93 @@ Once you got your sums, then it's just a division and interleave to turn these s
 For RG8, the same principle applies but much more trivial since 2-byte pixels naturally align themselves with power-of-two register widths.
 
 For R8, the summing step reduces to just be a sum-of-bytes which is a topic precisely [covered by Wojciech Muła](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html). After getting the sum, divide by the number of pixels to get the statistical average.
+
+# AVX512 VNNI (Icelake)
+
+The upcoming Intel Icelake features **V**ector **N**eural **N**etwork **I**nstructions in consumer-level products.
+The AVX512 extension is very small, featuring only 4 instructions.
+
+Instruction|Description
+-|-
+`VPDPBUSD`	| **Multiply and add unsigned and signed 8-bit integers**
+`VPDPBUSDS`	| Multiply and add unsigned and signed 8-bit integers with saturation
+`VPDPWSSD`	| Multiply and add signed 16-bit integers
+`VPDPWSSDS`	| Multiply and add 16-bit integers with saturation
+
+These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions basically implement 8 or 16 bit dot-products into 32-bit accumulators which falls nicely into the domain of summing bytes together.
+
+[VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to our "sum of bytes" problem.
+
+![](media/vpdpbusd.png)
+
+The [_mm512_dpbusd_epi32](https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=_mm512_dpbusd_epi32&expand=2195) intrinsic is described as:
+
+```
+Synopsis
+__m512i _mm512_dpbusd_epi32 (__m512i src, __m512i a, __m512i b)
+#include <immintrin.h>
+Instruction: vpdpbusd zmm {k}, zmm, zmm
+CPUID Flags: AVX512_VNNI
+
+Description
+Multiply groups of 4 adjacent pairs of unsigned 8-bit integers in a with corresponding signed 8-bit integers in b, producing 4 intermediate signed 16-bit results. Sum these 4 results with the corresponding 32-bit integer in src, and store the packed 32-bit results in dst.
+
+Operation
+FOR j := 0 to 15
+	tmp1 := a.byte[4*j] * b.byte[j]
+	tmp2 := a.byte[4*j+1] * b.byte[j+1]
+	tmp3 := a.byte[4*j+2] * b.byte[j+2]
+	tmp4 := a.byte[4*j+3] * b.byte[j+3]
+	dst.dword[j] := src.dword[j] + tmp1 + tmp2 + tmp3 + tmp4
+ENDFOR
+dst[MAX:512] := 0
+```
+
+By passing a vector of `1` values into the multiplication step, the implementation basically becomes:
+```
+FOR j := 0 to 15
+	tmp1 := a.byte[4*j]
+	tmp2 := a.byte[4*j+1]
+	tmp3 := a.byte[4*j+2]
+	tmp4 := a.byte[4*j+3]
+	dst.dword[j] := src.dword[j] + tmp1 + tmp2 + tmp3 + tmp4
+ENDFOR
+dst[MAX:512] := 0
+```
+
+Which basically turns it into a "sum 16 groups of 4 bytes and add this sum into another 16 32-bit values" instruction. Before we would have had to shuffle our bytes into appropriate lanes, `_mm***_sad_epu8` them, and then use a separate `_mm***_add_epi64` to add it to the accumulator. But this will save us from the additional add step. Though, the accumulator is only 32-bits rather than 64. It is twice as susceptible to overflow but it can be mitigated by only running an inner loop of this instruction a certain number of times guarenteed to be safe from overflow, and then adding this to the outer-loop's 64-bit accumulator.
+
+```cpp
+// The usual shuffle pattern from the sad_epu8 method
+// Each "R" "G" "B" "A" value is an 8-bit channel-byte
+// | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
+__m512i Deinterleave = _mm512_shuffle_epi8(
+	HexadecaPixel,
+	_mm512_set_epi32(
+		// Alpha
+		0x3C'38'34'30 + 0x03'03'03'03, 0x2C'28'24'20 + 0x03'03'03'03,
+		// Blue
+		0x3C'38'34'30 + 0x02'02'02'02, 0x2C'28'24'20 + 0x02'02'02'02,
+		// Green
+		0x3C'38'34'30 + 0x01'01'01'01, 0x2C'28'24'20 + 0x01'01'01'01,
+		// Red
+		0x3C'38'34'30 + 0x00'00'00'00, 0x2C'28'24'20 + 0x00'00'00'00,
+		// Alpha
+		0x1C'18'14'10 + 0x03'03'03'03, 0x0C'08'04'00 + 0x03'03'03'03,
+		// Blue
+		0x1C'18'14'10 + 0x02'02'02'02, 0x0C'08'04'00 + 0x02'02'02'02,
+		// Green
+		0x1C'18'14'10 + 0x01'01'01'01, 0x0C'08'04'00 + 0x01'01'01'01,
+		// Red
+		0x1C'18'14'10 + 0x00'00'00'00, 0x0C'08'04'00 + 0x00'00'00'00
+	)
+);
+// |                      256 bits                         |
+// | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
+// | **** | **** | **** | **** | **** | **** | **** | **** |
+// | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 |
+// | hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd |
+// |ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32|
+// |   \  +  /   |   \  +  /   |   \  +  /   |   \  +  /   |
+// |   ASum64    |   BSum64    |   GSum64    |   RSum64    |
+```
