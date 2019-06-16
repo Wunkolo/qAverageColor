@@ -44,17 +44,22 @@ std::uint32_t qAverageColorRGBA8(
 	{
 		// 32-bit accumulators
 		__m512i RGBASum32x4 = _mm512_setzero_si512();
-		// In the worst case, where all the bytes are just 0xFF and we want to
-		// protect from overflow, we get out of the loop and add to the upper
-		// level 64-bit accumulators
-		#define SPAN32 ( 0xFF * 4u )
+		// In the worst case, where all the bytes are just 0xFF:
+		// We are horizontally summing 4 channel-bytes at a time into a 32-bit
+		// accumulator. The 32-bit accumulator would overflow after-
+		// ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
+		//       ^             ^    ^ Number of bytes summed into accumulator
+		//       |             |      at each iteration
+		//       |             | a saturated channel bytechannel
+		//       | a saturated register is made out of...
+		#define SPAN32 (0xFFFFFFFF / ( 0xFF * 4 ) )
 		for(
 			std::size_t k = 0;
 			(k < SPAN32) && (j < Count/16);
 			k++, j++, i += 16
 		)
 		{
-			#undef SPAN32
+		#undef SPAN32
 			const __m512i HexadecaPixel = _mm512_loadu_si512((__m512i*)&Pixels[i]);
 			// Setting up for vpdpbusd
 			__m512i Deinterleave = _mm512_shuffle_epi8(
