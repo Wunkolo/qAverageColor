@@ -36,42 +36,113 @@ std::uint32_t qAverageColorRGBA8(
 {
 	std::size_t i = 0;
 
-#if defined(__AVX512F__) 
+#if defined(__AVX512VNNI__)
+	// 16 pixels at a time! (AVX512)
+	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
+	__m512i RGBASum64x2  = _mm512_setzero_si512();
+	for( std::size_t j = i/16; j < Count/16; j++, i += 16 )
+	{
+		// 32-bit accumulators
+		__m512i RGBASum32x4 = _mm512_setzero_si512();
+		// In the worst case, where all the bytes are just 0xFF and we want to
+		// protect from overflow, we get out of the loop and add to the upper
+		// level 64-bit accumulators
+		#define SPAN32 ( 0xFF * 4u )
+		for(
+			std::size_t k = 0;
+			(k < SPAN32) && (j < Count/16);
+			k++, j++, i += 16
+		)
+		{
+			#undef SPAN32
+			const __m512i HexadecaPixel = _mm512_loadu_si512((__m512i*)&Pixels[i]);
+			// Setting up for vpdpbusd
+			__m512i Deinterleave = _mm512_shuffle_epi8(
+				HexadecaPixel,
+				_mm512_set_epi32(
+					// Alpha
+					0x3C'38'34'30 + 0x03'03'03'03, 0x2C'28'24'20 + 0x03'03'03'03,
+					// Blue
+					0x3C'38'34'30 + 0x02'02'02'02, 0x2C'28'24'20 + 0x02'02'02'02,
+					// Green
+					0x3C'38'34'30 + 0x01'01'01'01, 0x2C'28'24'20 + 0x01'01'01'01,
+					// Red
+					0x3C'38'34'30 + 0x00'00'00'00, 0x2C'28'24'20 + 0x00'00'00'00,
+					// Alpha
+					0x1C'18'14'10 + 0x03'03'03'03, 0x0C'08'04'00 + 0x03'03'03'03,
+					// Blue
+					0x1C'18'14'10 + 0x02'02'02'02, 0x0C'08'04'00 + 0x02'02'02'02,
+					// Green
+					0x1C'18'14'10 + 0x01'01'01'01, 0x0C'08'04'00 + 0x01'01'01'01,
+					// Red
+					0x1C'18'14'10 + 0x00'00'00'00, 0x0C'08'04'00 + 0x00'00'00'00
+				)
+			);
+			// VNNI: basically an does 1 R^4 dot product for each group of 4 bytes
+			// which works perfectly for our needs
+
+			// Dest = Sum32 + (a[i + 0] * b[i + 0])
+			//              + (a[i + 1] * b[i + 1])
+			//              + (a[i + 2] * b[i + 2])
+			//              + (a[i + 3] * b[i + 3])
+			// Dest = 0 + (a[i + 0] * 1)
+			//          + (a[i + 1] * 1)
+			//          + (a[i + 2] * 1)
+			//          + (a[i + 3] * 1)
+			// | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
+			// | **** | **** | **** | **** | **** | **** | **** | **** |
+			// | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | x2
+			// | hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd |
+			// |ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32|
+			RGBASum32x4 = _mm512_dpbusd_epi32(
+				RGBASum32x4, Deinterleave, _mm512_set1_epi8(1)
+			);
+		}
+		// Upper Sum32s
+		RGBASum64x2 = _mm512_add_epi64(
+			RGBASum64x2,
+			_mm512_srli_epi64(RGBASum32x4, 32)
+		);
+		// Lower Sum32s
+		RGBASum64x2 = _mm512_add_epi64(
+			RGBASum64x2,
+			_mm512_maskz_mov_epi32(_cvtu32_mask16(0b0101010101010101), RGBASum32x4)
+		);
+	}
+
+	// | ASum64 | BSum64 | GSum64 | RSum64 |
+	__m256i RGBASum64  = _mm256_add_epi64(
+		_mm512_castsi512_si256(RGBASum64x2),
+		_mm512_extracti64x4_epi64(RGBASum64x2,1)
+	);
+#elif defined(__AVX512F__)
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2  = _mm512_setzero_si512();
 	for( std::size_t j = i/16; j < Count/16; j++, i += 16 )
 	{
 		const __m512i HexadecaPixel = _mm512_loadu_si512((__m512i*)&Pixels[i]);
-		// | AAAAAAAA | BBBBBBBB | GGGGGGGG | RRRRRRRR | x2 (256-bit lanes)
+		// | AAAAAAAA | BBBBBBBB | GGGGGGGG | RRRRRRRR | x2
 		// Setting up for 64-bit lane sad_epu8
 		__m512i Deinterleave = _mm512_shuffle_epi8(
 			HexadecaPixel,
 			_mm512_set_epi32(
 				// Alpha
-				0x3C'38'34'30 + 0x03'03'03'03,
-				0x2C'28'24'20 + 0x03'03'03'03,
+				0x3C'38'34'30 + 0x03'03'03'03, 0x2C'28'24'20 + 0x03'03'03'03,
 				// Blue
-				0x3C'38'34'30 + 0x02'02'02'02,
-				0x2C'28'24'20 + 0x02'02'02'02,
+				0x3C'38'34'30 + 0x02'02'02'02, 0x2C'28'24'20 + 0x02'02'02'02,
 				// Green
-				0x3C'38'34'30 + 0x01'01'01'01,
-				0x2C'28'24'20 + 0x01'01'01'01,
+				0x3C'38'34'30 + 0x01'01'01'01, 0x2C'28'24'20 + 0x01'01'01'01,
 				// Red
-				0x3C'38'34'30,
-				0x2C'28'24'20,
+				0x3C'38'34'30 + 0x00'00'00'00, 0x2C'28'24'20 + 0x00'00'00'00,
 				// Alpha
-				0x1C'18'14'10 + 0x03'03'03'03,
-				0x0C'08'04'00 + 0x03'03'03'03,
+				0x1C'18'14'10 + 0x03'03'03'03, 0x0C'08'04'00 + 0x03'03'03'03,
 				// Blue
-				0x1C'18'14'10 + 0x02'02'02'02,
-				0x0C'08'04'00 + 0x02'02'02'02,
+				0x1C'18'14'10 + 0x02'02'02'02, 0x0C'08'04'00 + 0x02'02'02'02,
 				// Green
-				0x1C'18'14'10 + 0x01'01'01'01,
-				0x0C'08'04'00 + 0x01'01'01'01,
+				0x1C'18'14'10 + 0x01'01'01'01, 0x0C'08'04'00 + 0x01'01'01'01,
 				// Red
-				0x1C'18'14'10,
-				0x0C'08'04'00
+				0x1C'18'14'10 + 0x00'00'00'00, 0x0C'08'04'00 + 0x00'00'00'00
 			)
 		);
 		// | ASum64 | BSum64 | GSum64 | RSum64 |
@@ -147,6 +218,7 @@ std::uint32_t qAverageColorRGBA8(
 	for( std::size_t j = i/4; j < Count/4; j++, i += 4 )
 	{
 		const __m128i QuadPixel = _mm_stream_load_si128((__m128i*)&Pixels[i]);
+		// | GGGGGGGG | RRRRRRRR | GGGGGGGG | RRRRRRRR |
 		RedGreenSum64 = _mm_add_epi64(
 			RedGreenSum64,
 			_mm_sad_epu8(
@@ -164,6 +236,7 @@ std::uint32_t qAverageColorRGBA8(
 				_mm_setzero_si128()
 			)
 		);
+		// | AAAAAAAA | BBBBBBBB | AAAAAAAA | BBBBBBBB |
 		BlueAlphaSum64 = _mm_add_epi64(
 			BlueAlphaSum64,
 			_mm_sad_epu8(
