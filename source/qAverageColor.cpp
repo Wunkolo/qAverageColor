@@ -52,14 +52,14 @@ std::uint32_t qAverageColorRGBA8(
 		//       |             |      at each iteration
 		//       |             | a saturated channel bytechannel
 		//       | a saturated register is made out of...
-		#define SPAN32 (0xFFFFFFFF / ( 0xFF * 4 ) )
+		#define SPANDOT4 (0xFFFFFFFF / ( 0xFF * 4 ) )
 		for(
 			std::size_t k = 0;
 			(k < SPAN32) && (j < Count/16);
 			k++, j++, i += 16
 		)
 		{
-		#undef SPAN32
+		#undef SPANDOT4
 			const __m512i HexadecaPixel = _mm512_loadu_si512((__m512i*)&Pixels[i]);
 			// Setting up for vpdpbusd
 			__m512i Deinterleave = _mm512_shuffle_epi8(
@@ -83,17 +83,17 @@ std::uint32_t qAverageColorRGBA8(
 					0x1C'18'14'10 + 0x00'00'00'00, 0x0C'08'04'00 + 0x00'00'00'00
 				)
 			);
-			// VNNI: basically an does 1 R^4 dot product for each group of 4 bytes
-			// which works perfectly for our needs
+			// VNNI: basically an does a R^4 dot product to each group of
+			// 4 bytes into a 32-bit accumulator
 
-			// Dest = Sum32 + (a[i + 0] * b[i + 0])
-			//              + (a[i + 1] * b[i + 1])
-			//              + (a[i + 2] * b[i + 2])
-			//              + (a[i + 3] * b[i + 3])
-			// Dest = 0 + (a[i + 0] * 1)
-			//          + (a[i + 1] * 1)
-			//          + (a[i + 2] * 1)
-			//          + (a[i + 3] * 1)
+			// Dest = Dest + (a[i + 0] * b[i + 0])
+			//             + (a[i + 1] * b[i + 1])
+			//             + (a[i + 2] * b[i + 2])
+			//             + (a[i + 3] * b[i + 3])
+			// Dest += + (a[i + 0] * 1)
+			//         + (a[i + 1] * 1)
+			//         + (a[i + 2] * 1)
+			//         + (a[i + 3] * 1)
 			// | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
 			// | **** | **** | **** | **** | **** | **** | **** | **** |
 			// | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | x2
