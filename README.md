@@ -3,7 +3,7 @@
 ||||||
 |:-:|:-:|:-:|:-:|:-:|
 ||Serial|SSE4.2|AVX2|AVX512|
-||![](media/Pat-Serial.gif)|![](media/Pat-SSE.gif)|![](media/Pat-AVX2.gif)|![](media/Pat-AVX512.gif)|
+||![Serial](media/Pat-Serial.gif)|![SSE](media/Pat-SSE.gif)|![AVX2](media/Pat-AVX2.gif)|![AVX512](media/Pat-AVX512.gif)|
 |Processor||Speedup|
 |[i7-7500u](https://en.wikichip.org/wiki/intel/core_i7/i7-7500u)|-|x2.8451|x4.4087|_N/A_|
 |[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|-|x2.7258|x4.2358|_N/A_|
@@ -13,7 +13,6 @@
 <sup>Tested against a synthetic 10-megapixel image, GCC version 8.2.1</sup>
 
 This is a little snippet write-up of code that will find the average color of an image of RGBA8 pixels (32-bits per pixel, 8 bits per channel) by utilizing the `psadbw`(`_mm_sad_epu8`) instruction to accumulate the sum of each individual channel into a (very overflow-safe)64-bit accumulator.
-
 
 Inspired by the ["SIMDized sum of all bytes in the array" write-up](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html) by [Wojciech Muła](https://twitter.com/pshufb).
 
@@ -25,8 +24,7 @@ The usual method to get the statistical average of each color channel in an imag
  4. When you've summed them all, divide these sums by the number of total pixels
  5. Interleave these averages into a new color value
 
-
-![](/media/Serial.gif)
+![Serial](/media/Serial.gif)
 
 Something like this:
 ```cpp
@@ -415,12 +413,20 @@ __m512i Deinterleave = _mm512_shuffle_epi8(
 		0x1C'18'14'10 + 0x00'00'00'00, 0x0C'08'04'00 + 0x00'00'00'00
 	)
 );
-// |                      256 bits                         |
-// | AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
-// | **** | **** | **** | **** | **** | **** | **** | **** |
-// | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 |
-// | hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd |
-// |ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32|
-// |   \  +  /   |   \  +  /   |   \  +  /   |   \  +  /   |
-// |   ASum64    |   BSum64    |   GSum64    |   RSum64    |
 ```
+
+```
+Basic pattern of the partial sums found within a 256-bit lane
+|                      256 bits                         |
+| AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
+| **** | **** | **** | **** | **** | **** | **** | **** |
+| 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 |
+| hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd |
+|ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32|
+|   \  +  /   |   \  +  /   |   \  +  /   |   \  +  /   | Add adjacent 32-bit
+|   ASum64    |   BSum64    |   GSum64    |   RSum64    | partial sums
+```
+
+As of now(`Wed 19 Jun 2019 10:15:53 PM PDT`) there is no publically available
+Icelake hardware to test this on but just in terms of uops this _should_ be
+a lot faster than the sad_epu-method.
