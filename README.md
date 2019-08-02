@@ -377,11 +377,20 @@ dst[MAX:512] := 0
 By passing a vector of `1` values into the multiplication step, the implementation basically becomes:
 ```
 FOR j := 0 to 15
-	tmp1 := a.byte[4*j]
-	tmp2 := a.byte[4*j+1]
-	tmp3 := a.byte[4*j+2]
-	tmp4 := a.byte[4*j+3]
+	tmp1 := a.byte[4*j] * 1
+	tmp2 := a.byte[4*j+1] * 1
+	tmp3 := a.byte[4*j+2] * 1
+	tmp4 := a.byte[4*j+3] * 1
 	dst.dword[j] := src.dword[j] + tmp1 + tmp2 + tmp3 + tmp4
+ENDFOR
+dst[MAX:512] := 0
+```
+
+Which is essentially:
+
+```
+FOR j := 0 to 15
+	dst.dword[j] := src.dword[j] + a.byte[4*j] + a.byte[4*j+1] + a.byte[4*j+2] + a.byte[4*j+3]
 ENDFOR
 dst[MAX:512] := 0
 ```
@@ -418,13 +427,13 @@ __m512i Deinterleave = _mm512_shuffle_epi8(
 ```
 Basic pattern of the partial sums found within a 256-bit lane
 |                      256 bits                         |
-| AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR |
-| **** | **** | **** | **** | **** | **** | **** | **** |
-| 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 |
-| hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd |
-|ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32|
-|   \  +  /   |   \  +  /   |   \  +  /   |   \  +  /   | Add adjacent 32-bit
-|   ASum64    |   BSum64    |   GSum64    |   RSum64    | partial sums
+| AAAA | AAAA | BBBB | BBBB | GGGG | GGGG | RRRR | RRRR | <
+| **** | **** | **** | **** | **** | **** | **** | **** | |
+| 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | 1111 | |
+| hadd | hadd | hadd | hadd | hadd | hadd | hadd | hadd | |
+|ASum32|ASum32|BSum32|BSum32|GSum32|GSum32|RSum32|RSum32| < Inner loop, 32-bit sum
+|   \  +  /   |   \  +  /   |   \  +  /   |   \  +  /   | | Sum Adjacent pairs
+|   ASum64    |   BSum64    |   GSum64    |   RSum64    | < Outer loop, 64-bit sum
 ```
 
 As of now(`Wed 19 Jun 2019 10:15:53 PM PDT`) there is no publically available
