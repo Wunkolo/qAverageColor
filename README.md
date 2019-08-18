@@ -436,27 +436,30 @@ Basic pattern of the partial sums found within a 256-bit lane
 |   ASum64    |   BSum64    |   GSum64    |   RSum64    | < Outer loop, 64-bit sum
 ```
 
-As of now(`Wed 19 Jun 2019 10:15:53 PM PDT`) there is no publically available
+As of now(`Wed 19 Jun 2019 10:15:53 PM PDT`) there is no publicly available
 Icelake hardware to test this on but just in terms of uops this _should_ be
 a lot faster than the sad_epu-method.
 
-Update: As of now(`Wed 07 Aug 2019 04:49:23 PM PDT`) there is still no publically
+Update: As of now(`Wed 07 Aug 2019 04:49:23 PM PDT`) there is still no publicly
 available hardware to test this on, but based on [some public benchmarks](https://www.anandtech.com/show/14664/testing-intel-ice-lake-10nm/3) there is now some [latency data](https://github.com/InstLatx64/InstLatx64/blob/master/GenuineIntel00706E5_IceLakeY_InstLatX64.txt) for the key instructions in the algorithm.
 
 On Skylake-X:
-`vpsadbw` has a latency of **3**-cycles and a throughput of **1**
-`vpaddq` has a latency of **1**-cycle and a throughput of **0.5**
+ * `vpsadbw` has a latency of **3**-cycles and a throughput of **1**
+
+ * `vpaddq` has a latency of **1**-cycle and a throughput of **0.5**
 
 **4 cycles**
 
 On Icelake:
-The `vpsadbw` and `vpaddq` have the same latencies and throughput
-`vpdpbusd`(VNNI) has a latency of **5**-cycles and a throughput of **1**
+ * `vpsadbw` and `vpaddq` have the same latencies and throughput as Skylake-X
+
+ * `vpdpbusd`(VNNI) has a latency of **5**-cycles and a throughput of **1**
 
 **5 cycles**
 
 It looks like ultimately, by having an instruction that fuses previous two
-instructions to achieve a horizontal-byte-addition, we end up with an extra cycle.
-This doesn't consider the overhead of the outerloops either. Once I get one of
-the new icelake laptops in my hands I can get some much harder benchmark numbers
+instructions to achieve a horizontal-byte-addition, we end up with an extra cycle though it saves the additional instruction decoding.
+
+This doesn't consider the overhead of the outer-loops either. Once I get one of
+the new Icelake laptops in my hands I can get some much harder benchmark numbers
 of how the two algorithms perform on the same Icelake hardware.
