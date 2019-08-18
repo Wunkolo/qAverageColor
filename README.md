@@ -444,16 +444,16 @@ Update: As of now(`Wed 07 Aug 2019 04:49:23 PM PDT`) there is still no publicly
 available hardware to test this on, but based on [some public benchmarks](https://www.anandtech.com/show/14664/testing-intel-ice-lake-10nm/3) there is now some [latency data](https://github.com/InstLatx64/InstLatx64/blob/master/GenuineIntel00706E5_IceLakeY_InstLatX64.txt) for the key instructions in the algorithm.
 
 On Skylake-X:
- * `vpsadbw` has a latency of **3**-cycles and a throughput of **1**
-
- * `vpaddq` has a latency of **1**-cycle and a throughput of **0.5**
+ * `vpsadbw *mm, *mm, *mm` has a latency of **3**-cycles and a throughput of **1.0**
+ * `vpaddq (x|y)mm, (x|y)mm, (x|y)mm` has a latency of **1**-cycle and a throughput of **0.33**
+ * `vpaddq zmm, zmm, zmm` has a latency of **1**-cycle and a throughput of **0.5**
 
 **4 cycles**
 
 On Icelake:
- * `vpsadbw` and `vpaddq` have the same latencies and throughput as Skylake-X
-
- * `vpdpbusd`(VNNI) has a latency of **5**-cycles and a throughput of **1**
+ * `vpsadbw *mm, *mm, *mm` and `vpaddq *mm, *mm, *mm` have the same latencies and throughput as Skylake-X
+ * `vpdpbusd (x|y)mm, (x|y)mm, (x|y)mm` has a latency of **5**-cycles and a throughput of **0.5**
+ * `vpdpbusd zmm, zmm, zmm` has a latency of **5**-cycles and a throughput of **1.0**
 
 **5 cycles**
 
