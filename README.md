@@ -333,10 +333,12 @@ For RG8, the same principle applies but much more trivial since 2-byte pixels na
 
 For R8, the summing step reduces to just be a sum-of-bytes which is a topic precisely [covered by Wojciech Muła](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html). After getting the sum, divide by the number of pixels to get the statistical average.
 
-# AVX512 VNNI (Icelake)
+# AVX512-VNNI (Icelake)
+
 
 The upcoming Intel Icelake features **V**ector **N**eural **N**etwork **I**nstructions in consumer-level products.
-The AVX512 extension is very small, featuring only 4 instructions.
+The AVX512-VNNI subset is very small, featuring only 4 new instructions.
+
 
 Instruction|Description
 -|-
@@ -345,11 +347,15 @@ Instruction|Description
 `VPDPWSSD`	| Multiply and add signed 16-bit integers
 `VPDPWSSDS`	| Multiply and add 16-bit integers with saturation
 
+ > ![](media/AVX512VNNI.jpg)
+ > [_Vector Neural Network Instructions Enable Int8 AI Inference on Intel Architecture_][1]
+
 These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions basically implement 8 or 16 bit dot-products into 32-bit accumulators which falls nicely into the domain of summing bytes together.
 
 [VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to our "sum of bytes" problem.
 
-![](media/vpdpbusd.png)
+ > ![](media/vpdpbusd.png)
+ > [WikiChip: AVX512VNNI][2]
 
 The [_mm512_dpbusd_epi32](https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=_mm512_dpbusd_epi32&expand=2195) intrinsic is described as:
 
@@ -463,3 +469,8 @@ instructions to achieve a horizontal-byte-addition, we end up with an extra cycl
 This doesn't consider the overhead of the outer-loops either. Once I get one of
 the new Icelake laptops in my hands I can get some much harder benchmark numbers
 of how the two algorithms perform on the same Icelake hardware.
+
+---
+
+[1]: (https://www.intel.ai/vnni-enables-inference/#gs.xme9hv)
+[2]: (https://en.wikichip.org/wiki/x86/avx512vnni)
