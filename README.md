@@ -348,14 +348,14 @@ Instruction|Description
 `VPDPWSSDS`	| Multiply and add 16-bit integers with saturation
 
  > ![](media/AVX512VNNI.jpg)
- > [_Vector Neural Network Instructions Enable Int8 AI Inference on Intel Architecture_][1]
+ > [_Vector Neural Network Instructions Enable Int8 AI Inference on Intel Architecture_](https://www.intel.ai/vnni-enables-inference)
 
 These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions basically implement 8 or 16 bit dot-products into 32-bit accumulators which falls nicely into the domain of summing bytes together.
 
 [VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to our "sum of bytes" problem.
 
  > ![](media/vpdpbusd.png)
- > [WikiChip: AVX512VNNI][2]
+ > [WikiChip: AVX512VNNI](https://en.wikichip.org/wiki/x86/avx512vnni)
 
 The [_mm512_dpbusd_epi32](https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=_mm512_dpbusd_epi32&expand=2195) intrinsic is described as:
 
@@ -469,8 +469,3 @@ instructions to achieve a horizontal-byte-addition, we end up with an extra cycl
 This doesn't consider the overhead of the outer-loops either. Once I get one of
 the new Icelake laptops in my hands I can get some much harder benchmark numbers
 of how the two algorithms perform on the same Icelake hardware.
-
----
-
-[1]: (https://www.intel.ai/vnni-enables-inference/#gs.xme9hv)
-[2]: (https://en.wikichip.org/wiki/x86/avx512vnni)
