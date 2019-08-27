@@ -333,8 +333,7 @@ For RG8, the same principle applies but much more trivial since 2-byte pixels na
 
 For R8, the summing step reduces to just be a sum-of-bytes which is a topic precisely [covered by Wojciech Muła](http://0x80.pl/notesen/2018-10-24-sse-sumbytes.html). After getting the sum, divide by the number of pixels to get the statistical average.
 
-# AVX512-VNNI (Icelake)
-
+# AVX512-VNNI
 
 The upcoming Intel Icelake features **V**ector **N**eural **N**etwork **I**nstructions in consumer-level products.
 The AVX512-VNNI subset is very small, featuring only 4 new instructions.
@@ -348,14 +347,16 @@ Instruction|Description
 `VPDPWSSDS`	| Multiply and add 16-bit integers with saturation
 
  > ![](media/AVX512VNNI.jpg)
+ > 
  > [_Vector Neural Network Instructions Enable Int8 AI Inference on Intel Architecture_](https://www.intel.ai/vnni-enables-inference)
 
-These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions basically implement 8 or 16 bit dot-products into 32-bit accumulators which falls nicely into the domain of summing bytes together.
+These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions essentially implements a 8 or 16 bit dot-product into 32-bit accumulators which falls nicely into the domain of summing a large span of bytes together.
 
-[VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to our "sum of bytes" problem.
+[VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to the "sum of bytes" problem by allowing for large "bites" of data to be horizontally added and accumulated.
 
  > ![](media/vpdpbusd.png)
- > [WikiChip: AVX512VNNI](https://en.wikichip.org/wiki/x86/avx512vnni)
+ >
+ > [WikiChip-AVX512VNNI](https://en.wikichip.org/wiki/x86/avx512vnni)
 
 The [_mm512_dpbusd_epi32](https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=_mm512_dpbusd_epi32&expand=2195) intrinsic is described as:
 
@@ -401,7 +402,7 @@ ENDFOR
 dst[MAX:512] := 0
 ```
 
-Which basically turns it into a "sum 16 groups of 4 bytes and add this sum into another 16 32-bit values" instruction. Before we would have had to shuffle our bytes into appropriate lanes, `_mm***_sad_epu8` them, and then use a separate `_mm***_add_epi64` to add it to the accumulator. But this will save us from the additional add step. Though, the accumulator is only 32-bits rather than 64. It is twice as susceptible to overflow but it can be mitigated by only running an inner loop of this instruction a certain number of times guarenteed to be safe from overflow, and then adding this to the outer-loop's 64-bit accumulator.
+Which basically turns it into a "sum 16 groups of 4 bytes and add this sum into another 16 32-bit values" instruction. Before we would have had to shuffle our bytes into appropriate lanes, `_mm***_sad_epu8` them, and then use a separate `_mm***_add_epi64` to add it to the accumulator. But this will save us from the additional add step. Though, the accumulator is only 32-bits rather than 64-bit. It is now twice as susceptible to overflow but it can be mitigated by only running an inner loop of this instruction a certain number of times guaranteed to be safe from overflow, and then adding this to the outer-loop's 64-bit accumulator.
 
 ```cpp
 // The usual shuffle pattern from the sad_epu8 method
@@ -443,8 +444,8 @@ Basic pattern of the partial sums found within a 256-bit lane
 ```
 
 As of now(`Wed 19 Jun 2019 10:15:53 PM PDT`) there is no publicly available
-Icelake hardware to test this on but just in terms of uops this _should_ be
-a lot faster than the sad_epu-method.
+Icelake hardware to test this on but just in terms of uops this should tighten
+up the pipeline a bit more than the sad_epu-method.
 
 Update: As of now(`Wed 07 Aug 2019 04:49:23 PM PDT`) there is still no publicly
 available hardware to test this on, but based on [some public benchmarks](https://www.anandtech.com/show/14664/testing-intel-ice-lake-10nm/3) there is now some [latency data](https://github.com/InstLatx64/InstLatx64/blob/master/GenuineIntel00706E5_IceLakeY_InstLatX64.txt) for the key instructions in the algorithm.
