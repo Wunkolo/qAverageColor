@@ -36,7 +36,7 @@ std::uint32_t qAverageColorRGBA8(
 {
 	std::size_t i = 0;
 
-#if defined(__AVX512VNNI__)
+#if defined(__AVX512VNNI__) || defined(_MSC_VER)
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2  = _mm512_setzero_si512();
@@ -55,7 +55,7 @@ std::uint32_t qAverageColorRGBA8(
 		#define SPANDOT4 (0xFFFFFFFF / ( 0xFF * 4 ) )
 		for(
 			std::size_t k = 0;
-			(k < SPAN32) && (j < Count/16);
+			(k < SPANDOT4) && (j < Count/16);
 			k++, j++, i += 16
 		)
 		{
