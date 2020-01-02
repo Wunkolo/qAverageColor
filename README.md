@@ -9,6 +9,7 @@
 |[i3-6100](https://en.wikichip.org/wiki/intel/core_i3/i3-6100)|-|x2.7258|x4.2358|_N/A_|
 |[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|-|x2.4015|x2.6498|_N/A_|
 |[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704|
+|[i7-1065G7](https://en.wikichip.org/wiki/intel/core_i7/i7-1065g7)|-|x3.9124|x4.6244|x5.4683|
 
 <sup>Tested against a synthetic 10-megapixel image, GCC version 8.2.1</sup>
 
