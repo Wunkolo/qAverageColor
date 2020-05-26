@@ -92,7 +92,7 @@ The trick here is recognizing that the absolute difference between an _unsigned_
 (A is unsigned)
 AD(A,B) = ABS(A - 0) = A
 
-X = ( 1, 2, 3, 4, 5, 6, 7, 8) # 8 byte vectors
+X = ( 0, 1, 2, 3, 4, 5, 6, 7) # 8 byte vectors
 Y = ( 0, 0, 0, 0, 0, 0, 0, 0)
 
 SAD(X,Y) =
@@ -353,7 +353,7 @@ Instruction|Description
 
 These instructions are [intended to accelerate convolutional neural network workloads](https://aidc.gallery.video/detail/videos/all-videos/video/5790616836001/understanding-new-vector-neural-network-instructions-vnni) which typically involves mixed-precision arithmetic and matrix multiplications. These four new instructions essentially implements a 8 or 16 bit dot-product into 32-bit accumulators which falls nicely into the domain of summing a large span of bytes together.
 
-[VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instructions. It practically lends itself to the "sum of bytes" problem by allowing for large "bites" of data to be horizontally added and accumulated.
+[VPDPBUSD](https://github.com/HJLebbink/asm-dude/wiki/VPDPBUSD) calculates the dot product of sixteen 8-bit ℝ⁴ vectors and accumulates them upon a vector of 32-bit values, all in one instruction. It practically lends itself to the "sum of bytes" problem by allowing for large "bites" of data to be horizontally added and accumulated.
 
  > ![](media/vpdpbusd.png)
  >
