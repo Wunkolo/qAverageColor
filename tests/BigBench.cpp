@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 
 #include <qAverageColor.hpp>
 #include "Bench.hpp"
