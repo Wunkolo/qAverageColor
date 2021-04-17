@@ -10,6 +10,7 @@
 |[i5-8600k](https://en.wikichip.org/wiki/intel/core_i5/i5-8600k)|-|x2.4015|x2.6498|_N/A_|
 |[i9-7900x](https://en.wikichip.org/wiki/intel/core_i9/i9-7900x)|-|x2.0651|x2.6140|x4.2704|
 |[i7-1065G7](https://en.wikichip.org/wiki/intel/core_i7/i7-1065g7)|-|x3.9124|x4.6244|x5.4683|
+|[i9-11900k](https://ark.intel.com/content/www/us/en/ark/products/212325/intel-core-i9-11900k-processor-16m-cache-up-to-5-30-ghz.html)|-|x4.2406|x5.3535|x6.0925|
 
 <sup>Tested against a synthetic 10-megapixel image, GCC version 8.2.1</sup>
 
