@@ -37,6 +37,7 @@ std::uint32_t qAverageColorRGBA8(
 	std::size_t i = 0;
 
 #if defined(__AVX512VNNI__) || defined(_MSC_VER)
+#pragma message "Compiling AVX512-VNNI version"
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2  = _mm512_setzero_si512();
@@ -121,6 +122,7 @@ std::uint32_t qAverageColorRGBA8(
 		_mm512_extracti64x4_epi64(RGBASum64x2,1)
 	);
 #elif defined(__AVX512F__)
+#pragma message "Compiling AVX512 version (not VNNI)"
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2  = _mm512_setzero_si512();
@@ -166,6 +168,7 @@ std::uint32_t qAverageColorRGBA8(
 		_mm512_extracti64x4_epi64(RGBASum64x2,1)
 	);
 #else
+#pragma message "Compiling AVX2 version"
 	__m256i RGBASum64  = _mm256_setzero_si256();
 #endif
 	// 8 pixels at a time! (AVX/AVX2)
