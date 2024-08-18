@@ -52,6 +52,7 @@ elseif( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" )
 		add_compile_options( -fdiagnostics-color=always )
 	endif()
 
+	add_compile_options( -march=native )
 	add_compile_options(
 		-Wall
 		-Warray-bounds
@@ -72,11 +73,6 @@ elseif( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" )
 		-Wunused-result
 		-Wunused-variable
 	)
-endif()
-
-if( APPLE )
-	# Create Universal Binary
-	set( CMAKE_OSX_ARCHITECTURES "arm64;x86_64" )
 endif()
 
 add_library(
