@@ -12,18 +12,20 @@ constexpr std::uint32_t TestValue  = 0xBEEFFEEB;
 
 int main(int argc, char* argv[])
 {
-	std::vector<std::uint32_t> TestPixels(PixelCount, TestValue);
+	std::vector<std::uint32_t> TestPixelsSerial(PixelCount, TestValue);
 
 	const auto Serial = Bench<>::BenchResult(
-		AverageColorRGBA8, TestPixels.data(), PixelCount
+		AverageColorRGBA8, TestPixelsSerial.data(), PixelCount
 	);
 	std::printf(
 		"Serial: #%08X | %12zuns\n", std::get<1>(Serial),
 		std::get<0>(Serial).count()
 	);
-	const auto Fast = Bench<>::BenchResult(
-		qAverageColorRGBA8, TestPixels.data(), PixelCount
-	);
+
+	std::vector<std::uint32_t> TestPixelsFast(PixelCount, TestValue);
+	const auto                 Fast = Bench<>::BenchResult(
+        qAverageColorRGBA8, TestPixelsFast.data(), PixelCount
+    );
 	std::printf(
 		"Fast  : #%08X | %12zuns\n", std::get<1>(Fast),
 		std::get<0>(Fast).count()
