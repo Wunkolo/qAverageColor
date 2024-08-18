@@ -2,8 +2,13 @@
 
 std::uint32_t AverageColorRGBA8(const std::uint32_t Pixels[], std::size_t Count)
 {
-	std::uint64_t RedSum, GreenSum, BlueSum, AlphaSum;
+	std::uint64_t RedSum;
+	std::uint64_t GreenSum;
+	std::uint64_t BlueSum;
+	std::uint64_t AlphaSum;
+
 	RedSum = GreenSum = BlueSum = AlphaSum = 0;
+
 	for( std::size_t i = 0; i < Count; ++i )
 	{
 		const std::uint32_t& CurColor = Pixels[i];
