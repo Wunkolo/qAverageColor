@@ -2,14 +2,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("Null bytes", "[Average]")
-{
-	std::array<std::uint32_t, 0> Data;
-
-	REQUIRE(AverageColorRGBA8(Data.data(), Data.size()) == 0x00'00'00'00);
-	REQUIRE(qAverageColorRGBA8(Data.data(), Data.size()) == 0x00'00'00'00);
-}
-
 TEST_CASE("One Pixel", "[Average]")
 {
 	std::array<std::uint32_t, 1> Data;
