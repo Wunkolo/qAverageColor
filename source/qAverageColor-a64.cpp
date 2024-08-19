@@ -15,7 +15,7 @@ std::uint32_t
 	std::uint64_t AlphaSum = 0ULL;
 
 	// 16 pixels at a time
-	for( std::size_t j = i / 16; j < Count / 16; j++, i += 16 )
+	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
 		// 32-bit accumulators
 		uint8x16x4_t Sum32x4 = {
@@ -45,7 +45,7 @@ std::uint32_t
 			// | RRRR | RRRR | RRRR | RRRR |
 			// | GGGG | GGGG | GGGG | GGGG |
 			// | BBBB | BBBB | BBBB | BBBB |
-			// | RRRR | RRRR | RRRR | RRRR |
+			// | AAAA | AAAA | AAAA | AAAA |
 			const uint8x16x4_t QuadPixel = vld4q_u8((const uint8_t*)&Pixels[i]);
 
 			// UDOT: basically an does a R^4 dot product to each group of
@@ -58,22 +58,18 @@ std::uint32_t
 			//         + (a[i + 1] * 1)
 			//         + (a[i + 2] * 1)
 			//         + (a[i + 3] * 1)
-			// RSum32 = hadd(|1111| * | RRRR | RRRR | RRRR | RRRR |)
-			// GSum32 = hadd(|1111| * | GGGG | GGGG | GGGG | GGGG |)
-			// BSum32 = hadd(|1111| * | BBBB | BBBB | BBBB | BBBB |)
-			// RSum32 = hadd(|1111| * | RRRR | RRRR | RRRR | RRRR |)
-			Sum32x4.val[0] = vdotq_u32(Sum32x4.val[0], Ones, QuadPixel.val[0]);
-			Sum32x4.val[1] = vdotq_u32(Sum32x4.val[1], Ones, QuadPixel.val[1]);
-			Sum32x4.val[2] = vdotq_u32(Sum32x4.val[2], Ones, QuadPixel.val[2]);
-			Sum32x4.val[3] = vdotq_u32(Sum32x4.val[3], Ones, QuadPixel.val[3]);
+			Sum32x4.val[0] = vdotq_u32(Sum32x4.val[0], QuadPixel.val[0], Ones);
+			Sum32x4.val[1] = vdotq_u32(Sum32x4.val[1], QuadPixel.val[1], Ones);
+			Sum32x4.val[2] = vdotq_u32(Sum32x4.val[2], QuadPixel.val[2], Ones);
+			Sum32x4.val[3] = vdotq_u32(Sum32x4.val[3], QuadPixel.val[3], Ones);
 		}
 
 		// To maintain safety from overflow, add the 32-bit sums into the 64-bit
 		// sums
-		RedSum += vaddvq_u32(Sum32x4.val[0]);
-		GreenSum += vaddvq_u32(Sum32x4.val[1]);
-		BlueSum += vaddvq_u32(Sum32x4.val[2]);
 		AlphaSum += vaddvq_u32(Sum32x4.val[3]);
+		BlueSum += vaddvq_u32(Sum32x4.val[2]);
+		GreenSum += vaddvq_u32(Sum32x4.val[1]);
+		RedSum += vaddvq_u32(Sum32x4.val[0]);
 		Sum32x4 = {
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
@@ -90,10 +86,10 @@ std::uint32_t
 		GreenSum += static_cast<std::uint8_t>(CurColor >> 8);
 		RedSum += static_cast<std::uint8_t>(CurColor >> 0);
 	}
-	RedSum /= Count;
-	GreenSum /= Count;
-	BlueSum /= Count;
 	AlphaSum /= Count;
+	BlueSum /= Count;
+	GreenSum /= Count;
+	RedSum /= Count;
 
 	return (static_cast<std::uint32_t>((std::uint8_t)AlphaSum) << 24)
 		 | (static_cast<std::uint32_t>((std::uint8_t)BlueSum) << 16)
