@@ -88,22 +88,46 @@ target_include_directories(
 	include
 )
 
-add_executable(
-	AverageColor
-	tests/AverageColor.cpp
-)
-target_link_libraries(
-	AverageColor
-	PRIVATE
-	qAverageColor
-)
+### Tests
+if (PROJECT_IS_TOP_LEVEL)
+	enable_testing()
 
-add_executable(
-	BigBench
-	tests/BigBench.cpp
-)
-target_link_libraries(
-	BigBench
-	PRIVATE
-	qAverageColor
-)
+	find_package(Catch2 3)
+
+	if (NOT TARGET Catch2::Catch2WithMain)
+		message(WARNING "Catch2 v3 not found. Using embedded submodule")
+		add_subdirectory(extern/Catch2 EXCLUDE_FROM_ALL)
+	endif()
+
+	add_executable(
+		AverageColor
+		tests/AverageColor.cpp
+	)
+	target_link_libraries(
+		AverageColor
+		PRIVATE
+		qAverageColor
+	)
+
+	add_executable(
+		BigBench
+		tests/BigBench.cpp
+	)
+	target_link_libraries(
+		BigBench
+		PRIVATE
+		qAverageColor
+	)
+
+	add_executable(
+		UnitTests
+		tests/UnitTests.cpp
+	)
+	target_link_libraries(
+		UnitTests
+		PRIVATE
+		qAverageColor
+		Catch2::Catch2WithMain
+	)
+	add_test(UnitTests UnitTests)
+endif()
