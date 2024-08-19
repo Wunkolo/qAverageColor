@@ -23,8 +23,8 @@ std::uint32_t
 // ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
 //       ^             ^    ^ Number of bytes summed into accumulator
 //       |             |      at each iteration
-//       |             | a saturated channel bytechannel
-//       | a saturated register is made out of...
+//       |             | a saturated color channel
+//       | a saturated sum-value
 #define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
 		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 16);
 			 k++, j++, i += 16 )
