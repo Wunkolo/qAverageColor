@@ -1,5 +1,8 @@
 #include "qAverageColor.hpp"
 
+#include <array>
+#include <cstdint>
+
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("One Pixel", "[Average]")
