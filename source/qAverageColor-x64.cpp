@@ -138,6 +138,8 @@ std::uint32_t
 		_mm512_castsi512_si256(RGBASum64x2),
 		_mm512_extracti64x4_epi64(RGBASum64x2, 1)
 	);
+	__m128i BlueAlphaSum64 = _mm256_extractf128_si256(RGBASum64, 1);
+	__m128i RedGreenSum64  = _mm256_castsi256_si128(RGBASum64);
 #elif defined(__AVX2__)
 	__m256i RGBASum64 = _mm256_setzero_si256();
 	// 8 pixels at a time! (AVX/AVX2)
@@ -181,7 +183,6 @@ std::uint32_t
 		);
 	}
 
-	// 4 pixels at a time! (SSE)
 	__m128i BlueAlphaSum64 = _mm256_extractf128_si256(RGBASum64, 1);
 	__m128i RedGreenSum64  = _mm256_castsi256_si128(RGBASum64);
 #else
