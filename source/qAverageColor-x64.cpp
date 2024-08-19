@@ -13,7 +13,7 @@ std::uint32_t
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2 = _mm512_setzero_si512();
-	for( std::size_t j = i / 16; j < Count / 16; j++, i += 16 )
+	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
 		// 32-bit accumulators
 		__m512i RGBASum32x4 = _mm512_setzero_si512();
@@ -97,6 +97,8 @@ std::uint32_t
 		_mm512_castsi512_si256(RGBASum64x2),
 		_mm512_extracti64x4_epi64(RGBASum64x2, 1)
 	);
+	__m128i BlueAlphaSum64 = _mm256_extractf128_si256(RGBASum64, 1);
+	__m128i RedGreenSum64  = _mm256_castsi256_si128(RGBASum64);
 #elif defined(__AVX512F__)
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
