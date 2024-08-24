@@ -20,8 +20,8 @@ std::uint32_t
 
 #if defined(ENABLE_APPLE_AMX)
 
-	// 16 pixels at a time
-	for( std::size_t j = i / 16; j < Count / 16; j++ )
+	// 32 pixels at a time
+	for( std::size_t j = i / 32; j < Count / 32; j++ )
 	{
 		AMX_SET();
 
@@ -35,7 +35,12 @@ std::uint32_t
 			// 10: Z.u32[i] += f(X.u8[i], Y.u8[i])
 			// Produces 64 32-bit integers, requiring 256 bytes of data total!
 			// four rows of Z: interleaved quartet(perfect for RGBA!):
-			((10ULL) << 42);
+			((10ULL) << 42) |
+
+			// Perform operation on multiple vectors (M2 only)
+			((1ULL) << 31) |
+			// Multiple is x2
+			((0ULL) << 25);
 
 // In the worst case, where all the bytes are just 0xFF:
 // We are horizontally summing 4 channel-bytes at a time into a 32-bit
@@ -47,32 +52,45 @@ std::uint32_t
 //       | a saturated sum-value
 #define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
 
-		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 16);
-			 k++, j++, i += 16 )
+		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 32);
+			 k++, j++, i += 32 )
 #undef SPANDOT4
 		{
-			// Load 16 pixels
-			// Ensure to clear upper 8 bits
-			AMX_LDX(reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i])
+			// Load 32 pixels
+			AMX_LDX(
+				reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i])
+				| (1ULL << 62) // Load multiple registers
+				| (0ULL << 60) // Multiple registers means two registers
 			);
 
 			// Add each 64-bit value into a 32-bit sum across four rows of Z
-			// Z0: ASum32, ASum32, ASum32, ASum32...
-			// Z1: BSum32, BSum32, BSum32, BSum32...
-			// Z2: GSum32, GSum32, GSum32, GSum32...
-			// Z3: RSum32, RSum32, RSum32, RSum32...
+			// Z0: RSum32, ASum32, ASum32, ASum32...
+			// Z1: GSum32, BSum32, BSum32, BSum32...
+			// Z2: BSum32, GSum32, GSum32, GSum32...
+			// Z3: ASum32, RSum32, RSum32, RSum32...
 			AMX_VECINT(VecIntOp);
 		}
 		// Store each row of Z
 		// 16 * 4 32-bit accumulators
 		// This maps to four rows of AMX's Z register
-		// Each row is an ABGR channel
-		uint32x4x4_t ZMat[4] = {{}};
+		// Each row is an RGBA channel
+		uint32x4x4_t ZMat[8] = {{}};
 
 		for( std::size_t ZRow = 0; ZRow < 4; ++ZRow )
 		{
+			// Row index stored in upper 8 bits
 			AMX_STZ(
 				reinterpret_cast<std::uintptr_t>(&ZMat[ZRow]) | (ZRow << 56)
+			);
+		}
+
+		// Upper rows start at 32
+		for( std::size_t ZRow = 0; ZRow < 4; ++ZRow )
+		{
+			// Row index stored in upper 8 bits
+			AMX_STZ(
+				reinterpret_cast<std::uintptr_t>(&ZMat[ZRow + 4])
+				| ((ZRow + 32) << 56)
 			);
 		}
 
@@ -88,10 +106,29 @@ std::uint32_t
 				  + vaddvq_u32(ZMat[1].val[2]) + vaddvq_u32(ZMat[1].val[3]);
 		RedSum += vaddvq_u32(ZMat[0].val[0]) + vaddvq_u32(ZMat[0].val[1])
 				+ vaddvq_u32(ZMat[0].val[2]) + vaddvq_u32(ZMat[0].val[3]);
+
+		AlphaSum
+			+= vaddvq_u32(ZMat[3 + 4].val[0]) + vaddvq_u32(ZMat[3 + 4].val[1])
+			 + vaddvq_u32(ZMat[3 + 4].val[2]) + vaddvq_u32(ZMat[3 + 4].val[3]);
+		BlueSum
+			+= vaddvq_u32(ZMat[2 + 4].val[0]) + vaddvq_u32(ZMat[2 + 4].val[1])
+			 + vaddvq_u32(ZMat[2 + 4].val[2]) + vaddvq_u32(ZMat[2 + 4].val[3]);
+		GreenSum
+			+= vaddvq_u32(ZMat[1 + 4].val[0]) + vaddvq_u32(ZMat[1 + 4].val[1])
+			 + vaddvq_u32(ZMat[1 + 4].val[2]) + vaddvq_u32(ZMat[1 + 4].val[3]);
+		RedSum
+			+= vaddvq_u32(ZMat[0 + 4].val[0]) + vaddvq_u32(ZMat[0 + 4].val[1])
+			 + vaddvq_u32(ZMat[0 + 4].val[2]) + vaddvq_u32(ZMat[0 + 4].val[3]);
+
+		// Reset 32-bit sums
 		ZMat[0] = {};
 		ZMat[1] = {};
 		ZMat[2] = {};
 		ZMat[3] = {};
+		ZMat[4] = {};
+		ZMat[5] = {};
+		ZMat[6] = {};
+		ZMat[7] = {};
 	}
 
 #endif
