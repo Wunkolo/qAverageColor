@@ -4,6 +4,10 @@
 
 #include <arm_neon.h>
 
+#if defined(ENABLE_APPLE_AMX)
+#include "amx.hpp"
+#endif
+
 std::uint32_t
 	qAverageColorRGBA8(const std::uint32_t Pixels[], std::size_t Count)
 {
@@ -13,6 +17,84 @@ std::uint32_t
 	std::uint64_t GreenSum = 0ULL;
 	std::uint64_t BlueSum  = 0ULL;
 	std::uint64_t AlphaSum = 0ULL;
+
+#if defined(ENABLE_APPLE_AMX)
+
+	// 16 pixels at a time
+	for( std::size_t j = i / 16; j < Count / 16; j++ )
+	{
+		AMX_SET();
+
+		const uint64_t VecIntOp =
+			// ALU mode
+			//  0 : f = Z+(X * Y) >> s
+			// 11 : f = Z+(X) >> s (M2 only)
+			((11ULL) << 47) |
+
+			// Lane width mode:
+			// 10: Z.u32[i] += f(X.u8[i], Y.u8[i])
+			// Produces 64 32-bit integers, requiring 256 bytes of data total!
+			// four rows of Z: interleaved quartet(perfect for RGBA!):
+			((10ULL) << 42);
+
+// In the worst case, where all the bytes are just 0xFF:
+// We are horizontally summing 4 channel-bytes at a time into a 32-bit
+// accumulator. The 32-bit accumulator would overflow after-
+// ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
+//       ^             ^    ^ Number of bytes summed into accumulator
+//       |             |      at each iteration
+//       |             | a saturated color channel
+//       | a saturated sum-value
+#define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
+
+		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 16);
+			 k++, j++, i += 16 )
+#undef SPANDOT4
+		{
+			// Load 16 pixels
+			// Ensure to clear upper 8 bits
+			AMX_LDX(reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i])
+			);
+
+			// Add each 64-bit value into a 32-bit sum across four rows of Z
+			// Z0: ASum32, ASum32, ASum32, ASum32...
+			// Z1: BSum32, BSum32, BSum32, BSum32...
+			// Z2: GSum32, GSum32, GSum32, GSum32...
+			// Z3: RSum32, RSum32, RSum32, RSum32...
+			AMX_VECINT(VecIntOp);
+		}
+		// Store each row of Z
+		// 16 * 4 32-bit accumulators
+		// This maps to four rows of AMX's Z register
+		// Each row is an ABGR channel
+		uint32x4x4_t ZMat[4] = {{}};
+
+		for( std::size_t ZRow = 0; ZRow < 4; ++ZRow )
+		{
+			AMX_STZ(
+				reinterpret_cast<std::uintptr_t>(&ZMat[ZRow]) | (ZRow << 56)
+			);
+		}
+
+		AMX_CLR();
+
+		// To maintain safety from overflow, add the 32-bit sums into the 64-bit
+		// sums
+		AlphaSum += vaddvq_u32(ZMat[3].val[0]) + vaddvq_u32(ZMat[3].val[1])
+				  + vaddvq_u32(ZMat[3].val[2]) + vaddvq_u32(ZMat[3].val[3]);
+		BlueSum += vaddvq_u32(ZMat[2].val[0]) + vaddvq_u32(ZMat[2].val[1])
+				 + vaddvq_u32(ZMat[2].val[2]) + vaddvq_u32(ZMat[2].val[3]);
+		GreenSum += vaddvq_u32(ZMat[1].val[0]) + vaddvq_u32(ZMat[1].val[1])
+				  + vaddvq_u32(ZMat[1].val[2]) + vaddvq_u32(ZMat[1].val[3]);
+		RedSum += vaddvq_u32(ZMat[0].val[0]) + vaddvq_u32(ZMat[0].val[1])
+				+ vaddvq_u32(ZMat[0].val[2]) + vaddvq_u32(ZMat[0].val[3]);
+		ZMat[0] = {};
+		ZMat[1] = {};
+		ZMat[2] = {};
+		ZMat[3] = {};
+	}
+
+#endif
 
 	// 16 pixels at a time
 	for( std::size_t j = i / 16; j < Count / 16; j++ )

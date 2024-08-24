@@ -11,6 +11,12 @@ set( CMAKE_COLOR_MAKEFILE ON )
 set( CMAKE_VERBOSE_MAKEFILE ON )
 set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
+### options
+
+if( APPLE )
+	option(ENABLE_APPLE_AMX "Allow usage of Apple's AMX instructions" OFF)
+endif()
+
 ### Optimizations
 if( MSVC )
 	add_compile_options( /arch:AVX2 )
@@ -75,6 +81,8 @@ elseif( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" )
 	)
 endif()
 
+
+### Main Targets
 add_library(
 	qAverageColor
 	STATIC
@@ -87,6 +95,15 @@ target_include_directories(
 	PUBLIC
 	include
 )
+
+if( ENABLE_APPLE_AMX )
+	target_compile_definitions(
+		qAverageColor
+		PRIVATE
+		ENABLE_APPLE_AMX
+	)
+endif()
+
 
 ### Tests
 if (PROJECT_IS_TOP_LEVEL)
