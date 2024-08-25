@@ -25,19 +25,17 @@ std::uint32_t
 	{
 		AMX_SET();
 
-// In the worst case, where all the bytes are just 0xFF:
-// We are horizontally summing 4 channel-bytes at a time into a 32-bit
-// accumulator. The 32-bit accumulator would overflow after-
-// ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
-//       ^             ^    ^ Number of bytes summed into accumulator
-//       |             |      at each iteration
-//       |             | a saturated color channel
-//       | a saturated sum-value
-#define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
-
-		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 64);
+		// In the worst case, where all the bytes are just 0xFF being summed
+		// into a 32-bit accumulator, the 32-bit sum may overflow unless we
+		// ensure all 32-bit overflow-hazards are protected against.
+		// In this case:
+		// The maximum allowed sum is 0xFFFFFFFF / 16 due to the `vaddvq_u32`
+		// instructions at the end possibly allowing overflow.
+		// So `(0xFFFFFFFF / 16) / 0xFF == 0x404040` is the max amount of bytes
+		// we could ever safely accumulate.
+		const std::size_t LocalSumMaxIter = ((0xFFFFFFFF / 16) / 0xFF);
+		for( std::size_t k = 0; (k < LocalSumMaxIter) && (j < Count / 64);
 			 k++, j++, i += 64 )
-#undef SPANDOT4
 		{
 			// Load 32 pixels
 			AMX_LDX(
