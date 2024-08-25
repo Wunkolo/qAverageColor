@@ -72,15 +72,16 @@ std::uint32_t
 		for( std::size_t IterationIndex = 0; IterationIndex < 4;
 			 ++IterationIndex )
 		{
-			for( std::size_t ZRow = 0; ZRow < 4; ++ZRow )
+			for( std::size_t ZRow = 0; ZRow < 4; ZRow += 2 )
 			{
-				// Row index stored in upper 8 bits
+				// Store 64*2-byte pairs of rows of Z
 				AMX_STZ(
 					reinterpret_cast<std::uintptr_t>(
 						&ZMat[ZRow + 4 * IterationIndex]
 					)
 					| static_cast<std::uint64_t>(ZRow + 16 * IterationIndex)
 						  << 56
+					| 1ULL << 62
 				);
 			}
 		}
