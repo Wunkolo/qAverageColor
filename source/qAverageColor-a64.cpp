@@ -28,12 +28,9 @@ std::uint32_t
 		// In the worst case, where all the bytes are just 0xFF being summed
 		// into a 32-bit accumulator, the 32-bit sum may overflow unless we
 		// ensure all 32-bit overflow-hazards are protected against.
-		// In this case:
-		// The maximum allowed sum is 0xFFFFFFFF / 16 due to the `vaddvq_u32`
-		// instructions at the end possibly allowing overflow.
-		// So `(0xFFFFFFFF / 16) / 0xFF == 0x404040` is the max amount of bytes
-		// we could ever safely accumulate.
-		const std::size_t LocalSumMaxIter = ((0xFFFFFFFF / 16) / 0xFF);
+		// In this case: `(0xFFFFFFFF / 0xFF == 0x1010101` is the max amount of
+		// bytes we could ever safely accumulate.
+		const std::size_t LocalSumMaxIter = (0xFFFFFFFF / 0xFF);
 		for( std::size_t k = 0; (k < LocalSumMaxIter) && (j < Count / 64);
 			 k++, j++, i += 64 )
 		{
@@ -96,22 +93,43 @@ std::uint32_t
 			 ++IterationIndex )
 		{
 			const std::size_t Off = IterationIndex * 4;
-			AlphaSum += vaddvq_u32(ZMat[3 + Off].val[0])
-					  + vaddvq_u32(ZMat[3 + Off].val[1])
-					  + vaddvq_u32(ZMat[3 + Off].val[2])
-					  + vaddvq_u32(ZMat[3 + Off].val[3]);
-			BlueSum += vaddvq_u32(ZMat[2 + Off].val[0])
-					 + vaddvq_u32(ZMat[2 + Off].val[1])
-					 + vaddvq_u32(ZMat[2 + Off].val[2])
-					 + vaddvq_u32(ZMat[2 + Off].val[3]);
-			GreenSum += vaddvq_u32(ZMat[1 + Off].val[0])
-					  + vaddvq_u32(ZMat[1 + Off].val[1])
-					  + vaddvq_u32(ZMat[1 + Off].val[2])
-					  + vaddvq_u32(ZMat[1 + Off].val[3]);
-			RedSum += vaddvq_u32(ZMat[0 + Off].val[0])
-					+ vaddvq_u32(ZMat[0 + Off].val[1])
-					+ vaddvq_u32(ZMat[0 + Off].val[2])
-					+ vaddvq_u32(ZMat[0 + Off].val[3]);
+			// Widening sums are used to ensure safety from overflow:
+			AlphaSum += vaddvq_u64(vpadalq_u32(
+				vpadalq_u32(
+					vpadalq_u32(
+						vpaddlq_u32(ZMat[3 + Off].val[0]), ZMat[3 + Off].val[1]
+					),
+					ZMat[3 + Off].val[2]
+				),
+				ZMat[3 + Off].val[3]
+			));
+			BlueSum += vaddvq_u64(vpadalq_u32(
+				vpadalq_u32(
+					vpadalq_u32(
+						vpaddlq_u32(ZMat[2 + Off].val[0]), ZMat[2 + Off].val[1]
+					),
+					ZMat[2 + Off].val[2]
+				),
+				ZMat[2 + Off].val[3]
+			));
+			GreenSum += vaddvq_u64(vpadalq_u32(
+				vpadalq_u32(
+					vpadalq_u32(
+						vpaddlq_u32(ZMat[1 + Off].val[0]), ZMat[1 + Off].val[1]
+					),
+					ZMat[1 + Off].val[2]
+				),
+				ZMat[1 + Off].val[3]
+			));
+			RedSum += vaddvq_u64(vpadalq_u32(
+				vpadalq_u32(
+					vpadalq_u32(
+						vpaddlq_u32(ZMat[0 + Off].val[0]), ZMat[0 + Off].val[1]
+					),
+					ZMat[0 + Off].val[2]
+				),
+				ZMat[0 + Off].val[3]
+			));
 		}
 	}
 
