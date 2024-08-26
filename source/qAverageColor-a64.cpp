@@ -140,14 +140,19 @@ std::uint32_t
 	// 16 pixels at a time
 	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
-		// 32-bit accumulators
-		uint8x16x4_t Sum32x4 = {
+		// 16-bit accumulators
+		uint16x8x4_t SumLo16x8x4 = {
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
 		};
-		const uint8x16_t Ones = vdupq_n_u8(1);
+		uint16x8x4_t SumHi16x8x4 = {
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+		};
 
 		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
 		// may overflow unless we ensure all 32-bit overflow-hazards are
@@ -156,37 +161,112 @@ std::uint32_t
 		// would only want to do
 		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing into
 		// the greater 64-bit sum and iterating again.
-		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFF / 0xFF);
 		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
 			 k++, j++, i += 16 )
 		{
+			// | RGBA| RGBA | RGBA | RGBA |
+			// | RGBA| RGBA | RGBA | RGBA |
+			// | RGBA| RGBA | RGBA | RGBA |
+			// | RGBA| RGBA | RGBA | RGBA |
+			const uint8x16x4_t Pixels4x4
+				= vld1q_u8_x4((const uint8_t*)&Pixels[i]);
 
-			// Loads and Deinterleaves each RGBA channel
-			// | RRRR | RRRR | RRRR | RRRR |
-			// | GGGG | GGGG | GGGG | GGGG |
-			// | BBBB | BBBB | BBBB | BBBB |
-			// | AAAA | AAAA | AAAA | AAAA |
-			const uint8x16x4_t QuadPixel = vld4q_u8((const uint8_t*)&Pixels[i]);
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			SumLo16x8x4.val[0]
+				= vaddw_u8(SumLo16x8x4.val[0], vget_low_u8(Pixels4x4.val[0]));
+			SumLo16x8x4.val[1]
+				= vaddw_u8(SumLo16x8x4.val[1], vget_low_u8(Pixels4x4.val[1]));
+			SumLo16x8x4.val[2]
+				= vaddw_u8(SumLo16x8x4.val[2], vget_low_u8(Pixels4x4.val[2]));
+			SumLo16x8x4.val[3]
+				= vaddw_u8(SumLo16x8x4.val[3], vget_low_u8(Pixels4x4.val[3]));
 
-			// UDOT: basically an does a R^4 dot product to each group of
-			// 4 bytes into a 32-bit accumulator
-			// Dest += + (a[i + 0] * 1)
-			//         + (a[i + 1] * 1)
-			//         + (a[i + 2] * 1)
-			//         + (a[i + 3] * 1)
-			Sum32x4.val[0] = vdotq_u32(Sum32x4.val[0], QuadPixel.val[0], Ones);
-			Sum32x4.val[1] = vdotq_u32(Sum32x4.val[1], QuadPixel.val[1], Ones);
-			Sum32x4.val[2] = vdotq_u32(Sum32x4.val[2], QuadPixel.val[2], Ones);
-			Sum32x4.val[3] = vdotq_u32(Sum32x4.val[3], QuadPixel.val[3], Ones);
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			// |RSum16|GSum16|BSum16|ASum16|RSum16|GSum16|BSum16|ASum16|
+			SumHi16x8x4.val[0]
+				= vaddw_high_u8(SumHi16x8x4.val[0], Pixels4x4.val[0]);
+			SumHi16x8x4.val[1]
+				= vaddw_high_u8(SumHi16x8x4.val[1], Pixels4x4.val[1]);
+			SumHi16x8x4.val[2]
+				= vaddw_high_u8(SumHi16x8x4.val[2], Pixels4x4.val[2]);
+			SumHi16x8x4.val[3]
+				= vaddw_high_u8(SumHi16x8x4.val[3], Pixels4x4.val[3]);
 		}
+
+		// |RSum32|GSum32|BSum32|ASum32|
+		// |RSum32|GSum32|BSum32|ASum32|
+		// |RSum32|GSum32|BSum32|ASum32|
+		// |RSum32|GSum32|BSum32|ASum32|
+		const uint32x4x4_t Sum32x4x4 = {
+			vaddq_u32(
+				vaddl_u16(
+					vget_low_u16(SumHi16x8x4.val[0]),
+					vget_low_u16(SumLo16x8x4.val[0])
+				),
+				vaddl_high_u16(SumHi16x8x4.val[0], SumLo16x8x4.val[0])
+			),
+			vaddq_u32(
+				vaddl_u16(
+					vget_low_u16(SumHi16x8x4.val[1]),
+					vget_low_u16(SumLo16x8x4.val[1])
+				),
+				vaddl_high_u16(SumHi16x8x4.val[2], SumLo16x8x4.val[2])
+			),
+			vaddq_u32(
+				vaddl_u16(
+					vget_low_u16(SumHi16x8x4.val[2]),
+					vget_low_u16(SumLo16x8x4.val[2])
+				),
+				vaddl_high_u16(SumHi16x8x4.val[1], SumLo16x8x4.val[1])
+			),
+			vaddq_u32(
+				vaddl_u16(
+					vget_low_u16(SumHi16x8x4.val[3]),
+					vget_low_u16(SumLo16x8x4.val[3])
+				),
+				vaddl_high_u16(SumHi16x8x4.val[3], SumLo16x8x4.val[3])
+			),
+		};
+
+		// |RSum64|GSum64|
+		// |BSum64|ASum64|
+		const uint64x2x2_t Sum64x2x2 = {
+			vaddq_u64(
+				vaddl_u32(
+					vget_low_u32(Sum32x4x4.val[0]),
+					vget_low_u32(Sum32x4x4.val[1])
+				),
+				vaddl_u32(
+					vget_low_u32(Sum32x4x4.val[2]),
+					vget_low_u32(Sum32x4x4.val[3])
+				)
+			),
+			vaddq_u64(
+				vaddl_high_u32(Sum32x4x4.val[0], Sum32x4x4.val[1]),
+				vaddl_high_u32(Sum32x4x4.val[2], Sum32x4x4.val[3])
+			),
+		};
 
 		// Widening pair-wise sums into 64-bit values are used to ensure safety
 		// from overflow
-		AlphaSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[3]));
-		BlueSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[2]));
-		GreenSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[1]));
-		RedSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[0]));
-		Sum32x4 = {
+		AlphaSum += vgetq_lane_u64(Sum64x2x2.val[1], 1);
+		BlueSum += vgetq_lane_u64(Sum64x2x2.val[1], 0);
+		GreenSum += vgetq_lane_u64(Sum64x2x2.val[0], 1);
+		RedSum += vgetq_lane_u64(Sum64x2x2.val[0], 0);
+
+		SumLo16x8x4 = {
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+		};
+		SumHi16x8x4 = {
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
