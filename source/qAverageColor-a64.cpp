@@ -29,7 +29,7 @@ std::uint32_t
 		// ensure all 32-bit overflow-hazards are protected against.
 		// In this case: `(0xFFFFFFFF / 0xFF == 0x1010101` is the max amount of
 		// bytes we could ever safely accumulate.
-		const std::size_t LocalSumOverflowMax = (0xFFFFFFFF / 0xFF);
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / 0xFF);
 		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 64);
 			 k++, j++, i += 64 )
 		{
@@ -149,19 +149,16 @@ std::uint32_t
 		};
 		const uint8x16_t Ones = vdupq_n_u8(1);
 
-// In the worst case, where all the bytes are just 0xFF:
-// We are horizontally summing 4 channel-bytes at a time into a 32-bit
-// accumulator. The 32-bit accumulator would overflow after-
-// ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
-//       ^             ^    ^ Number of bytes summed into accumulator
-//       |             |      at each iteration
-//       |             | a saturated color channel
-//       | a saturated sum-value
-#define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
-
-		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 16);
+		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
+		// may overflow unless we ensure all 32-bit overflow-hazards are
+		// protected against. In this case:a single vdotq_u32 operation may sum
+		// up to four 0xFF bytes into the 32-bit sum, so in the worst case we
+		// would only want to do
+		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing into
+		// the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
 			 k++, j++, i += 16 )
-#undef SPANDOT4
 		{
 
 			// Loads and Deinterleaves each RGBA channel
@@ -173,10 +170,6 @@ std::uint32_t
 
 			// UDOT: basically an does a R^4 dot product to each group of
 			// 4 bytes into a 32-bit accumulator
-			// Dest = Dest + (a[i + 0] * b[i + 0])
-			//             + (a[i + 1] * b[i + 1])
-			//             + (a[i + 2] * b[i + 2])
-			//             + (a[i + 3] * b[i + 3])
 			// Dest += + (a[i + 0] * 1)
 			//         + (a[i + 1] * 1)
 			//         + (a[i + 2] * 1)
@@ -187,12 +180,12 @@ std::uint32_t
 			Sum32x4.val[3] = vdotq_u32(Sum32x4.val[3], QuadPixel.val[3], Ones);
 		}
 
-		// To maintain safety from overflow, add the 32-bit sums into the 64-bit
-		// sums
-		AlphaSum += vaddvq_u32(Sum32x4.val[3]);
-		BlueSum += vaddvq_u32(Sum32x4.val[2]);
-		GreenSum += vaddvq_u32(Sum32x4.val[1]);
-		RedSum += vaddvq_u32(Sum32x4.val[0]);
+		// Widening pair-wise sums into 64-bit values are used to ensure safety
+		// from overflow
+		AlphaSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[3]));
+		BlueSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[2]));
+		GreenSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[1]));
+		RedSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[0]));
 		Sum32x4 = {
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
