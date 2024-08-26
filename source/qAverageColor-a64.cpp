@@ -19,7 +19,6 @@ std::uint32_t
 	std::uint64_t AlphaSum = 0ULL;
 
 #if defined(ENABLE_APPLE_AMX)
-
 	// 64 pixels at a time
 	for( std::size_t j = i / 64; j < Count / 64; j++ )
 	{
@@ -30,8 +29,8 @@ std::uint32_t
 		// ensure all 32-bit overflow-hazards are protected against.
 		// In this case: `(0xFFFFFFFF / 0xFF == 0x1010101` is the max amount of
 		// bytes we could ever safely accumulate.
-		const std::size_t LocalSumMaxIter = (0xFFFFFFFF / 0xFF);
-		for( std::size_t k = 0; (k < LocalSumMaxIter) && (j < Count / 64);
+		const std::size_t LocalSumOverflowMax = (0xFFFFFFFF / 0xFF);
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 64);
 			 k++, j++, i += 64 )
 		{
 			// Load 32 pixels
@@ -41,7 +40,7 @@ std::uint32_t
 				| (1ULL << 60) // Load four times
 			);
 
-			const uint64_t VecIntOp =
+			constexpr std::uint64_t VecIntOp =
 				// ALU mode
 				//  0 : f = Z+(X * Y) >> s
 				// 11 : f = Z+(X) >> s (M2 only)
@@ -55,14 +54,14 @@ std::uint32_t
 
 				// Iterate multple times (M2 only)
 				((1ULL) << 31) |
-				// Iterate x4 times
+				// Iterate x4 times (M2 only)
 				((1ULL) << 25);
 
 			// Add each 64-bit value into a 32-bit sum across four rows of Z
-			// Z0: RSum32, ASum32, ASum32, ASum32...
-			// Z1: GSum32, BSum32, BSum32, BSum32...
-			// Z2: BSum32, GSum32, GSum32, GSum32...
-			// Z3: ASum32, RSum32, RSum32, RSum32...
+			// Z0 + Iter * 16: RSum32, ASum32, ASum32, ASum32...
+			// Z1 + Iter * 16: GSum32, BSum32, BSum32, BSum32...
+			// Z2 + Iter * 16: BSum32, GSum32, GSum32, GSum32...
+			// Z3 + Iter * 16: ASum32, RSum32, RSum32, RSum32...
 			AMX_VECINT(VecIntOp);
 		}
 
@@ -88,48 +87,50 @@ std::uint32_t
 
 		AMX_CLR();
 
-		// To maintain safety from overflow, add the 32-bit sums into the 64-bit
-		// sums
 		for( std::size_t IterationIndex = 0; IterationIndex < 4;
 			 ++IterationIndex )
 		{
-			const std::size_t Off = IterationIndex * 4;
-			// Widening sums are used to ensure safety from overflow:
+			const std::size_t IterationOffset = IterationIndex * 4;
+			// Widening pair-wise sums are used to ensure safety from overflow
 			AlphaSum += vaddvq_u64(vpadalq_u32(
 				vpadalq_u32(
 					vpadalq_u32(
-						vpaddlq_u32(ZMat[3 + Off].val[0]), ZMat[3 + Off].val[1]
+						vpaddlq_u32(ZMat[3 + IterationOffset].val[0]),
+						ZMat[3 + IterationOffset].val[1]
 					),
-					ZMat[3 + Off].val[2]
+					ZMat[3 + IterationOffset].val[2]
 				),
-				ZMat[3 + Off].val[3]
+				ZMat[3 + IterationOffset].val[3]
 			));
 			BlueSum += vaddvq_u64(vpadalq_u32(
 				vpadalq_u32(
 					vpadalq_u32(
-						vpaddlq_u32(ZMat[2 + Off].val[0]), ZMat[2 + Off].val[1]
+						vpaddlq_u32(ZMat[2 + IterationOffset].val[0]),
+						ZMat[2 + IterationOffset].val[1]
 					),
-					ZMat[2 + Off].val[2]
+					ZMat[2 + IterationOffset].val[2]
 				),
-				ZMat[2 + Off].val[3]
+				ZMat[2 + IterationOffset].val[3]
 			));
 			GreenSum += vaddvq_u64(vpadalq_u32(
 				vpadalq_u32(
 					vpadalq_u32(
-						vpaddlq_u32(ZMat[1 + Off].val[0]), ZMat[1 + Off].val[1]
+						vpaddlq_u32(ZMat[1 + IterationOffset].val[0]),
+						ZMat[1 + IterationOffset].val[1]
 					),
-					ZMat[1 + Off].val[2]
+					ZMat[1 + IterationOffset].val[2]
 				),
-				ZMat[1 + Off].val[3]
+				ZMat[1 + IterationOffset].val[3]
 			));
 			RedSum += vaddvq_u64(vpadalq_u32(
 				vpadalq_u32(
 					vpadalq_u32(
-						vpaddlq_u32(ZMat[0 + Off].val[0]), ZMat[0 + Off].val[1]
+						vpaddlq_u32(ZMat[0 + IterationOffset].val[0]),
+						ZMat[0 + IterationOffset].val[1]
 					),
-					ZMat[0 + Off].val[2]
+					ZMat[0 + IterationOffset].val[2]
 				),
-				ZMat[0 + Off].val[3]
+				ZMat[0 + IterationOffset].val[3]
 			));
 		}
 	}
