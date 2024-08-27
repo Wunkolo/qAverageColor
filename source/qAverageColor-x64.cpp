@@ -9,7 +9,7 @@ std::uint32_t
 {
 	std::size_t i = 0;
 
-#if defined(__AVX512VNNI__) || defined(_MSC_VER)
+#if defined(__AVX512VNNI__)
 	// 16 pixels at a time! (AVX512)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2 = _mm512_setzero_si512();
