@@ -11,16 +11,20 @@ set( CMAKE_COLOR_MAKEFILE ON )
 set( CMAKE_VERBOSE_MAKEFILE ON )
 set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
 
-### options
-
+### Options
 if( APPLE )
 	option(ENABLE_APPLE_AMX "Allow usage of Apple's AMX instructions" OFF)
 endif()
 
 ### Optimizations
 if( MSVC )
-	add_compile_options( /arch:AVX2 )
-	add_compile_options( /Gv )
+	if( CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$" )
+		add_compile_options( /arch:AVX2 )
+		add_compile_options( /Gv )
+	elseif( CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$" )
+		add_compile_options( /arch:armv8.2 )
+	endif()
+
 	add_compile_options(
 		/MP # Parallel builds 
 		/permissive- # Stricter C++ conformance
@@ -109,7 +113,7 @@ endif()
 if (PROJECT_IS_TOP_LEVEL)
 	enable_testing()
 
-	find_package(Catch2 3)
+	find_package(Catch2 3 QUIET)
 
 	if (NOT TARGET Catch2::Catch2WithMain)
 		message(WARNING "Catch2 v3 not found. Using embedded submodule")
