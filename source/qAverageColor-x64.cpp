@@ -194,7 +194,7 @@ std::uint32_t
 
 	for( std::size_t j = i / 4; j < Count / 4; j++, i += 4 )
 	{
-		const __m128i QuadPixel = _mm_stream_load_si128((__m128i*)&Pixels[i]);
+		const __m128i QuadPixel = _mm_load_si128((__m128i*)&Pixels[i]);
 		// | GGGGGGGG | RRRRRRRR | GGGGGGGG | RRRRRRRR |
 		RedGreenSum64 = _mm_add_epi64(
 			RedGreenSum64, _mm_sad_epu8(
