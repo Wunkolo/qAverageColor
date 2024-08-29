@@ -10,30 +10,29 @@ std::uint32_t
 	std::size_t i = 0;
 
 #if defined(__AVX512VNNI__)
-	// 16 pixels at a time! (AVX512)
+	// 16 pixels at a time! (AVX512VNNI)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2 = _mm512_setzero_si512();
 	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
 		// 32-bit accumulators
 		__m512i RGBASum32x4 = _mm512_setzero_si512();
-// In the worst case, where all the bytes are just 0xFF:
-// We are horizontally summing 4 channel-bytes at a time into a 32-bit
-// accumulator. The 32-bit accumulator would overflow after-
-// ( (0xFFFFFFFF / ( 0xFF * 4 ) ) = >>> 0x404040 iterations <<<
-//       ^             ^    ^ Number of bytes summed into accumulator
-//       |             |      at each iteration
-//       |             | a saturated color channel
-//       | a saturated sum-value
-#define SPANDOT4 (0xFFFFFFFF / (0xFF * 4))
-		for( std::size_t k = 0; (k < SPANDOT4) && (j < Count / 16);
+
+		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
+		// may overflow unless we ensure all 32-bit overflow-hazards are
+		// protected against. In this case:a single vdotq_u32 operation may sum
+		// up to four 0xFF bytes into the 32-bit sum, so in the worst case we
+		// would only want to do
+		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing into
+		// the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
 			 k++, j++, i += 16 )
 		{
-#undef SPANDOT4
 			const __m512i HexadecaPixel
 				= _mm512_loadu_si512((__m512i*)&Pixels[i]);
 			// Setting up for vpdpbusd
-			__m512i Deinterleave = _mm512_shuffle_epi8(
+			const __m512i Deinterleave = _mm512_shuffle_epi8(
 				HexadecaPixel,
 				_mm512_set_epi32(
 					// Alpha
@@ -81,6 +80,8 @@ std::uint32_t
 				RGBASum32x4, Deinterleave, _mm512_set1_epi8(1)
 			);
 		}
+
+		// Widening sums to ensure there is no 32-bit overflow.
 		// Upper Sum32s
 		RGBASum64x2
 			= _mm512_add_epi64(RGBASum64x2, _mm512_srli_epi64(RGBASum32x4, 32));
@@ -108,7 +109,7 @@ std::uint32_t
 		const __m512i HexadecaPixel = _mm512_loadu_si512((__m512i*)&Pixels[i]);
 		// | AAAAAAAA | BBBBBBBB | GGGGGGGG | RRRRRRRR | x2
 		// Setting up for 64-bit lane sad_epu8
-		__m512i Deinterleave = _mm512_shuffle_epi8(
+		const __m512i Deinterleave = _mm512_shuffle_epi8(
 			HexadecaPixel,
 			_mm512_set_epi32(
 				// Alpha
@@ -239,8 +240,8 @@ std::uint32_t
 		AlphaSum64 += _bextr_u64(CurColor, 24, 8);
 		BlueSum64 += _bextr_u64(CurColor, 16, 8);
 #else
-		AlphaSum64 += static_cast<std::uint8_t>(CurColor >> 24);
-		BlueSum64 += static_cast<std::uint8_t>(CurColor >> 16);
+        AlphaSum64 += static_cast<std::uint8_t>(CurColor >> 24);
+        BlueSum64 += static_cast<std::uint8_t>(CurColor >> 16);
 #endif
 		// I'm being oddly specific here to make it obvious for the
 		// compiler to do some ah/bh/ch/dh register trickery
