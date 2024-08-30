@@ -20,7 +20,7 @@ std::uint32_t
 
 #if defined(ENABLE_APPLE_AMX)
 	// 64 pixels at a time
-	for( std::size_t j = i / 64; j < Count / 64; j++ )
+	for( std::size_t j = i / 128; j < Count / 128; j++ )
 	{
 		AMX_SET();
 
@@ -30,12 +30,19 @@ std::uint32_t
 		// In this case: `(0xFFFFFFFF / 0xFF == 0x1010101` is the max amount of
 		// bytes we could ever safely accumulate.
 		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / 0xFF);
-		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 64);
-			 k++, j++, i += 64 )
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 128);
+			 k++, j++, i += 128 )
 		{
-			// Load 32 pixels
+			// Load 64 pixels into X
 			AMX_LDX(
-				reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i])
+				reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i + 0])
+				| (1ULL << 62) // Load multiple times
+				| (1ULL << 60) // Load four times
+			);
+			// Load another 64 pixels into Y
+			AMX_LDY(
+				reinterpret_cast<std::uintptr_t>((const uint8_t*)&Pixels[i + 64]
+				)
 				| (1ULL << 62) // Load multiple times
 				| (1ULL << 60) // Load four times
 			);
@@ -43,8 +50,9 @@ std::uint32_t
 			constexpr std::uint64_t VecIntOp =
 				// ALU mode
 				//  0 : f = Z+(X * Y) >> s
+				//  2 : f = Z+(X + Y) >> s
 				// 11 : f = Z+(X) >> s (M2 only)
-				((11ULL) << 47) |
+				((2ULL) << 47) |
 				// Lane width mode:
 				// 10: Z.u32[i] += f(X.u8[i], Y.u8[i])
 				// Produces 64 32-bit integers, requiring 256 bytes of data
