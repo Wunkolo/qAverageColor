@@ -148,6 +148,61 @@ std::uint32_t
 	// 16 pixels at a time
 	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
+#if defined(__ARM_FEATURE_DOTPROD)
+
+		// 32-bit accumulators
+		uint8x16x4_t Sum32x4 = {
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+		};
+		const uint8x16_t Ones = vdupq_n_u8(1);
+
+		// In the worst case, where all the bytes are just 0xFF, the 32-bit
+		// sum may overflow unless we ensure all 32-bit overflow-hazards are
+		// protected against. In this case:a single vdotq_u32 operation may
+		// sum up to four 0xFF bytes into the 32-bit sum, so in the worst
+		// case we would only want to do
+		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing
+		// into the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
+			 k++, j++, i += 16 )
+		{
+
+			// Loads and Deinterleaves each RGBA channel
+			// | RRRR | RRRR | RRRR | RRRR |
+			// | GGGG | GGGG | GGGG | GGGG |
+			// | BBBB | BBBB | BBBB | BBBB |
+			// | AAAA | AAAA | AAAA | AAAA |
+			const uint8x16x4_t QuadPixel = vld4q_u8((const uint8_t*)&Pixels[i]);
+
+			// UDOT: basically an does a R^4 dot product to each group of
+			// 4 bytes into a 32-bit accumulator
+			// Dest += + (a[i + 0] * 1)
+			//         + (a[i + 1] * 1)
+			//         + (a[i + 2] * 1)
+			//         + (a[i + 3] * 1)
+			Sum32x4.val[0] = vdotq_u32(Sum32x4.val[0], QuadPixel.val[0], Ones);
+			Sum32x4.val[1] = vdotq_u32(Sum32x4.val[1], QuadPixel.val[1], Ones);
+			Sum32x4.val[2] = vdotq_u32(Sum32x4.val[2], QuadPixel.val[2], Ones);
+			Sum32x4.val[3] = vdotq_u32(Sum32x4.val[3], QuadPixel.val[3], Ones);
+		}
+
+		// Widening pair-wise sums into 64-bit values are used to ensure
+		// safety from overflow
+		AlphaSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[3]));
+		BlueSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[2]));
+		GreenSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[1]));
+		RedSum += vaddvq_u64(vpaddlq_u32(Sum32x4.val[0]));
+		Sum32x4 = {
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+			vdupq_n_u32(0),
+		};
+#else
 		// 16-bit accumulators
 		uint16x8x4_t SumLo16x8x4 = {
 			vdupq_n_u32(0),
@@ -280,6 +335,7 @@ std::uint32_t
 			vdupq_n_u32(0),
 			vdupq_n_u32(0),
 		};
+#endif
 	}
 
 	for( ; i < Count; ++i )
