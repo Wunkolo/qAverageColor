@@ -195,7 +195,7 @@ std::uint32_t
 
 	for( std::size_t j = i / 4; j < Count / 4; j++, i += 4 )
 	{
-		const __m128i QuadPixel = _mm_load_si128((__m128i*)&Pixels[i]);
+		const __m128i QuadPixel = _mm_loadu_si128((__m128i*)&Pixels[i]);
 		// | GGGGGGGG | RRRRRRRR | GGGGGGGG | RRRRRRRR |
 		RedGreenSum64 = _mm_add_epi64(
 			RedGreenSum64, _mm_sad_epu8(
@@ -240,8 +240,8 @@ std::uint32_t
 		AlphaSum64 += _bextr_u64(CurColor, 24, 8);
 		BlueSum64 += _bextr_u64(CurColor, 16, 8);
 #else
-        AlphaSum64 += static_cast<std::uint8_t>(CurColor >> 24);
-        BlueSum64 += static_cast<std::uint8_t>(CurColor >> 16);
+		AlphaSum64 += static_cast<std::uint8_t>(CurColor >> 24);
+		BlueSum64 += static_cast<std::uint8_t>(CurColor >> 16);
 #endif
 		// I'm being oddly specific here to make it obvious for the
 		// compiler to do some ah/bh/ch/dh register trickery
