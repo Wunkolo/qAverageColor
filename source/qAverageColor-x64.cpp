@@ -5,7 +5,6 @@
 #include <immintrin.h>
 
 #include <array>
-#include <cstdio>
 
 std::uint32_t
 	qAverageColorRGBA8(const std::uint32_t Pixels[], std::size_t Count)
@@ -14,19 +13,21 @@ std::uint32_t
 
 #if defined(__AMX_TILE__) && defined(__AMX_INT8__)
 	__tile1024i MaskTile = {4, 64}; // 4rowx16b  (4x16) masks (4 x 16 ints)
+
+	std::array<std::uint32_t, 4 * 16> MaskData = {};
 	// Generate Mask-Matrix
-	std::array<std::uint32_t, 4 * 16> MaskData;
 	for( std::size_t ChannelIndex = 0; ChannelIndex < 4; ++ChannelIndex )
 	{
+		// Each row is masking a particular RGBA channel.
+		// 0: 0x00'00'00'01
+		// 1: 0x00'00'01'00
+		// 2: 0x00'01'00'00
+		// 3: 0x01'00'00'00
+		const std::uint32_t ChannelMask
+			= (std::uint32_t(1) << (ChannelIndex * 8));
 		for( std::size_t j = 0; j < 16; ++j )
 		{
-			// Each row is masking a particular RGBA channel.
-			// 0: 0x00'00'00'01
-			// 1: 0x00'00'01'00
-			// 2: 0x00'01'00'00
-			// 3: 0x01'00'00'00
-			MaskData[j + ChannelIndex * 16]
-				= (uint32_t(1) << (ChannelIndex * 8));
+			MaskData[j + ChannelIndex * 16] = ChannelMask;
 		}
 	}
 
@@ -63,8 +64,26 @@ std::uint32_t
 			// bytes
 			__tile_stream_loadd(&PixelTile, Pixels + i, 4);
 
-			// 8-bit dot-product rows of A and columns of B into matrix C of
-			// 32-bit sums
+			// 8-bit dot-product(32-bit lanes) rows of A and columns of B into
+			// matrix C of 32-bit sums:
+
+			// [R Sum32]    [R___|R___|R___|R___|...]   [ RGBA ]
+			// [G Sum32] += [_G__|_G__|_G__|_G__|...] * [ RGBA ]
+			// [B Sum32]    [__B_|__B_|__B_|__B_|...]   [ RGBA ]
+			// [A Sum32]    [___A|___A|___A|___A|...]   [ RGBA ]
+			//  Sums           Masks                    [ RGBA ]
+			//                                          [  ... ]
+			//                                           Pixels
+			// This is not as optimal as I would hope as this is basically
+			// doing a vector-matrix multiplication rather than matrix-matrix
+			// If it was possible to "transpose" the individual RGBA elements
+			// such that entire rows would just have R, G, B, then this would
+			// scale much better.
+			// Possibly multiple sum-tiles are needed. If the "2048 INT8
+			// operations per-clock" figure is true, then it might be better to
+			// have entire tiles for each of the R G B A sums and do the
+			// expensive unpacking and summing into the outer 64-bit sums for
+			// every 0x0x101010 iterations. - Sun Nov 24 01:49:05 PM PST 2024
 			__tile_dpbuud(&SumTile, MaskTile, PixelTile);
 		}
 
