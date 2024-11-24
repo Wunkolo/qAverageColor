@@ -4,12 +4,87 @@
 
 #include <immintrin.h>
 
+#include <array>
+#include <cstdio>
+
 std::uint32_t
 	qAverageColorRGBA8(const std::uint32_t Pixels[], std::size_t Count)
 {
 	std::size_t i = 0;
 
-#if defined(__AVX512VNNI__)
+#if defined(__AMX_TILE__) && defined(__AMX_INT8__)
+	__tile1024i MaskTile = {4, 64}; // 4rowx16b  (4x16) masks (4 x 16 ints)
+	// Generate Mask-Matrix
+	std::array<std::uint32_t, 4 * 16> MaskData;
+	for( std::size_t ChannelIndex = 0; ChannelIndex < 4; ++ChannelIndex )
+	{
+		for( std::size_t j = 0; j < 16; ++j )
+		{
+			// Each row is masking a particular RGBA channel.
+			// 0: 0x00'00'00'01
+			// 1: 0x00'00'01'00
+			// 2: 0x00'01'00'00
+			// 3: 0x01'00'00'00
+			MaskData[j + ChannelIndex * 16]
+				= (uint32_t(1) << (ChannelIndex * 8));
+		}
+	}
+
+	// Load mask-matrix
+	// Each row is composed of 16x32-bit integers. 64 bytes per row
+	__tile_loadd(&MaskTile, MaskData.data(), sizeof(std::uint32_t) * 16);
+
+	std::uint64_t RedSum   = 0ULL;
+	std::uint64_t GreenSum = 0ULL;
+	std::uint64_t BlueSum  = 0ULL;
+	std::uint64_t AlphaSum = 0ULL;
+
+	for( std::size_t j = i / 16; j < Count / 16; j++ )
+	{
+		// {number of rows, column size in bytes}
+		// 16rowsx4b (16x1) 16 pixels (16 ints)
+		__tile1024i PixelTile = {16, 4};
+
+		// Initialize the Sum to 0, 0, 0, 0
+		__tile1024i SumTile = {4, 4}; // 4rowsx4b  (4x1) four RGBA sums (4 ints)
+		__tile_zero(&SumTile);
+
+		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
+		// may overflow unless we ensure all 32-bit overflow-hazards are
+		// protected against. In this case:a single vdotq_u32 operation may sum
+		// up to four 0xFF bytes into the 32-bit sum, so in the worst case we
+		// would only want to do
+		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing into
+		// the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
+			 k++, j++, i += 16 )
+		{
+			// Load 64 bytes of RGBA pixel data, 16 pixels
+			// Be careful here, each "row" is 4 bytes long, so the stride is 4
+			// bytes
+			__tile_stream_loadd(&PixelTile, Pixels + i, 4);
+
+			// 8-bit dot-product rows of A and columns of B into matrix C of
+			// 32-bit sums
+			__tile_dpbuud(&SumTile, MaskTile, PixelTile);
+		}
+
+		// Store vector of 32-bit sums
+		std::array<std::uint32_t, 4> SumData;
+		__tile_stored(SumData.data(), 4, SumTile);
+
+		// Add to the outer 64-bit sums
+		RedSum += SumData[0];
+		GreenSum += SumData[1];
+		BlueSum += SumData[2];
+		AlphaSum += SumData[3];
+	}
+
+	__m128i RedGreenSum64  = _mm_set_epi64x(GreenSum, RedSum);
+	__m128i BlueAlphaSum64 = _mm_set_epi64x(AlphaSum, BlueSum);
+
+#elif defined(__AVX512VNNI__)
 	// 16 pixels at a time! (AVX512VNNI)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2 = _mm512_setzero_si512();
