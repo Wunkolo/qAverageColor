@@ -49,12 +49,12 @@ std::uint32_t
 
 		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
 		// may overflow unless we ensure all 32-bit overflow-hazards are
-		// protected against. In this case:a single vdotq_u32 operation may sum
-		// up to four 0xFF bytes into the 32-bit sum, so in the worst case we
-		// would only want to do
-		// `(0xFFFFFFFF / (0xFF * 4) == 0x404040` iterations before summing into
-		// the greater 64-bit sum and iterating again.
-		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 4));
+		// protected against. In this case:a single __tile_dpbuud operation may
+		// sum up to 16 0xFF bytes into the 32-bit sum, so in the worst case
+		// we would only want to do
+		// `(0xFFFFFFFF / (0xFF * 16) == 0x101010` iterations before summing
+		// into the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 16));
 		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
 			 k++, j++, i += 16 )
 		{
