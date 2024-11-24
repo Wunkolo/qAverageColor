@@ -34,10 +34,8 @@ std::uint32_t
 	// Each row is composed of 16x32-bit integers. 64 bytes per row
 	__tile_loadd(&MaskTile, MaskData.data(), sizeof(std::uint32_t) * 16);
 
-	std::uint64_t RedSum   = 0ULL;
-	std::uint64_t GreenSum = 0ULL;
-	std::uint64_t BlueSum  = 0ULL;
-	std::uint64_t AlphaSum = 0ULL;
+	__m128i RedGreenSum64  = _mm_setzero_si128();
+	__m128i BlueAlphaSum64 = _mm_setzero_si128();
 
 	for( std::size_t j = i / 16; j < Count / 16; j++ )
 	{
@@ -71,18 +69,17 @@ std::uint32_t
 		}
 
 		// Store vector of 32-bit sums
-		std::array<std::uint32_t, 4> SumData;
-		__tile_stored(SumData.data(), 4, SumTile);
+		__m128i LocalSums32;
+		__tile_stored(&LocalSums32, 4, SumTile);
 
 		// Add to the outer 64-bit sums
-		RedSum += SumData[0];
-		GreenSum += SumData[1];
-		BlueSum += SumData[2];
-		AlphaSum += SumData[3];
+		RedGreenSum64 = _mm_add_epi64(
+			RedGreenSum64, _mm_unpacklo_epi32(LocalSums32, _mm_setzero_si128())
+		);
+		BlueAlphaSum64 = _mm_add_epi64(
+			BlueAlphaSum64, _mm_unpackhi_epi32(LocalSums32, _mm_setzero_si128())
+		);
 	}
-
-	__m128i RedGreenSum64  = _mm_set_epi64x(GreenSum, RedSum);
-	__m128i BlueAlphaSum64 = _mm_set_epi64x(AlphaSum, BlueSum);
 
 #elif defined(__AVX512VNNI__)
 	// 16 pixels at a time! (AVX512VNNI)
