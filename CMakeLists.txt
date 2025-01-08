@@ -151,4 +151,8 @@ if (PROJECT_IS_TOP_LEVEL)
 		Catch2::Catch2WithMain
 	)
 	add_test(UnitTests UnitTests)
+
+	include(CTest)
+	include(Catch)
+	catch_discover_tests(UnitTests)
 endif()
