@@ -4,12 +4,113 @@
 
 #include <immintrin.h>
 
+#include <array>
+
 std::uint32_t
 	qAverageColorRGBA8(const std::uint32_t Pixels[], std::size_t Count)
 {
 	std::size_t i = 0;
 
-#if defined(__AVX512VNNI__)
+#if defined(__AMX_TILE__) && defined(__AMX_INT8__)
+	// 4rowx16b  (4x16) masks (4 x 16 ints)
+	__tile1024i MaskTile = {4, 64};
+
+	std::array<std::uint32_t, 4 * 16> MaskData = {};
+	// Generate Mask-Matrix
+	for( std::size_t ChannelIndex = 0; ChannelIndex < 4; ++ChannelIndex )
+	{
+		// Each row is masking a particular RGBA channel.
+		// 0: 0x00'00'00'01
+		// 1: 0x00'00'01'00
+		// 2: 0x00'01'00'00
+		// 3: 0x01'00'00'00
+		const std::uint32_t ChannelMask
+			= (std::uint32_t(1) << (ChannelIndex * 8));
+		for( std::size_t j = 0; j < 16; ++j )
+		{
+			MaskData[j + ChannelIndex * 16] = ChannelMask;
+		}
+	}
+
+	// Load mask-matrix
+	// Each row is composed of 16x32-bit integers. 64 bytes per row
+	__tile_loadd(&MaskTile, MaskData.data(), sizeof(std::uint32_t) * 16);
+
+	__m128i RedGreenSum64  = _mm_setzero_si128();
+	__m128i BlueAlphaSum64 = _mm_setzero_si128();
+
+	for( std::size_t j = i / 256; j < Count / 256; j++ )
+	{
+		// {number of rows, column size in bytes}
+		// 16rowsx64b (16x16) 16*16 pixels (256 ints)
+		__tile1024i PixelTile = {16, 64};
+
+		// Initialize the Sum to 0, 0, 0, 0
+		// 4rowsx64b  (4x16) four rows of 16 RGBA sums (64 ints)
+		__tile1024i SumTile = {4, sizeof(std::uint32_t) * 16};
+		__tile_zero(&SumTile);
+
+		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
+		// may overflow unless we ensure all 32-bit overflow-hazards are
+		// protected against. In this case: a single __tile_dpbuud operation may
+		// sum up to 16 0xFF bytes into the 32-bit sum, so in the worst case
+		// we would only want to do
+		// `(0xFFFFFFFF / (0xFF * 16) == 0x101010` iterations before summing
+		// into the greater 64-bit sum and iterating again.
+		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 16));
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 256);
+			 k++, j++, i += 256 )
+		{
+			// Load 1024 bytes of RGBA pixel data, 16 * 16 pixels
+			// Be careful here, each "row" is 64 bytes long, so the stride is 64
+			// bytes
+			__tile_stream_loadd(
+				&PixelTile, Pixels + i, sizeof(std::uint32_t) * 16
+			);
+
+			// 8-bit dot-product(32-bit lanes) rows of A and columns of B into
+			// matrix C of 32-bit sums:
+
+			// [R Sum32|R Sum32|...]    [R___|R___|...]   [ RGBA | RGBA | ... ]
+			// [G Sum32|G Sum32|...] += [_G__|_G__|...] * [ RGBA | RGBA | ... ]
+			// [B Sum32|B Sum32|...]    [__B_|__B_|...]   [ RGBA | RGBA | ... ]
+			// [A Sum32|A Sum32|...]    [___A|___A|...]   [ RGBA | RGBA | ... ]
+			//  Sums                      Masks           [ RGBA | RGBA | ... ]
+			//                                            [  ... |  ... | ... ]
+			//                                             Pixels
+			__tile_dpbuud(&SumTile, MaskTile, PixelTile);
+		}
+
+		// Store vector of 32-bit sums
+
+		std::array<std::uint32_t, 4 * 16> LocalSums;
+		__tile_stored(&LocalSums, sizeof(std::uint32_t) * 16, SumTile);
+		std::uint64_t RedSum64   = 0;
+		std::uint64_t GreenSum64 = 0;
+		std::uint64_t BlueSum64  = 0;
+		std::uint64_t AlphaSum64 = 0;
+		for( std::size_t ColIndex = 0; ColIndex < 16; ++ColIndex )
+		{
+			const std::uint32_t& RedSum   = LocalSums[ColIndex + (0U * 16ULL)];
+			const std::uint32_t& GreenSum = LocalSums[ColIndex + (1U * 16ULL)];
+			const std::uint32_t& BlueSum  = LocalSums[ColIndex + (2U * 16ULL)];
+			const std::uint32_t& AlphaSum = LocalSums[ColIndex + (3U * 16ULL)];
+
+			RedSum64 += RedSum;
+			GreenSum64 += GreenSum;
+			BlueSum64 += BlueSum;
+			AlphaSum64 += AlphaSum;
+		}
+
+		RedGreenSum64 += _mm_add_epi64(
+			RedGreenSum64, _mm_set_epi64x(GreenSum64, RedSum64)
+		);
+		BlueAlphaSum64 += _mm_add_epi64(
+			BlueAlphaSum64, _mm_set_epi64x(AlphaSum64, BlueSum64)
+		);
+	}
+
+#elif defined(__AVX512VNNI__)
 	// 16 pixels at a time! (AVX512VNNI)
 	// | ASum64 | BSum64 | GSum64 | RSum64 | ASum64 | BSum64 | GSum64 | RSum64 |
 	__m512i RGBASum64x2 = _mm512_setzero_si512();
