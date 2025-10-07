@@ -12,7 +12,8 @@ std::uint32_t
 	std::size_t i = 0;
 
 #if defined(__AMX_TILE__) && defined(__AMX_INT8__)
-	__tile1024i MaskTile = {4, 64}; // 4rowx16b  (4x16) masks (4 x 16 ints)
+	// 4rowx16b  (4x16) masks (4 x 16 ints)
+	__tile1024i MaskTile = {4, 64};
 
 	std::array<std::uint32_t, 4 * 16> MaskData = {};
 	// Generate Mask-Matrix
@@ -38,65 +39,74 @@ std::uint32_t
 	__m128i RedGreenSum64  = _mm_setzero_si128();
 	__m128i BlueAlphaSum64 = _mm_setzero_si128();
 
-	for( std::size_t j = i / 16; j < Count / 16; j++ )
+	for( std::size_t j = i / 256; j < Count / 256; j++ )
 	{
 		// {number of rows, column size in bytes}
-		// 16rowsx4b (16x1) 16 pixels (16 ints)
-		__tile1024i PixelTile = {16, 4};
+		// 16rowsx64b (16x16) 16*16 pixels (256 ints)
+		__tile1024i PixelTile = {16, 64};
 
 		// Initialize the Sum to 0, 0, 0, 0
-		__tile1024i SumTile = {4, 4}; // 4rowsx4b  (4x1) four RGBA sums (4 ints)
+		// 4rowsx64b  (4x16) four rows of 16 RGBA sums (64 ints)
+		__tile1024i SumTile = {4, sizeof(std::uint32_t) * 16};
 		__tile_zero(&SumTile);
 
 		// In the worst case, where all the bytes are just 0xFF, the 32-bit sum
 		// may overflow unless we ensure all 32-bit overflow-hazards are
-		// protected against. In this case:a single __tile_dpbuud operation may
+		// protected against. In this case: a single __tile_dpbuud operation may
 		// sum up to 16 0xFF bytes into the 32-bit sum, so in the worst case
 		// we would only want to do
 		// `(0xFFFFFFFF / (0xFF * 16) == 0x101010` iterations before summing
 		// into the greater 64-bit sum and iterating again.
 		constexpr std::size_t LocalSumOverflowMax = (0xFFFFFFFF / (0xFF * 16));
-		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 16);
-			 k++, j++, i += 16 )
+		for( std::size_t k = 0; (k < LocalSumOverflowMax) && (j < Count / 256);
+			 k++, j++, i += 256 )
 		{
-			// Load 64 bytes of RGBA pixel data, 16 pixels
-			// Be careful here, each "row" is 4 bytes long, so the stride is 4
+			// Load 1024 bytes of RGBA pixel data, 16 * 16 pixels
+			// Be careful here, each "row" is 64 bytes long, so the stride is 64
 			// bytes
-			__tile_stream_loadd(&PixelTile, Pixels + i, 4);
+			__tile_stream_loadd(
+				&PixelTile, Pixels + i, sizeof(std::uint32_t) * 16
+			);
 
 			// 8-bit dot-product(32-bit lanes) rows of A and columns of B into
 			// matrix C of 32-bit sums:
 
-			// [R Sum32]    [R___|R___|R___|R___|...]   [ RGBA ]
-			// [G Sum32] += [_G__|_G__|_G__|_G__|...] * [ RGBA ]
-			// [B Sum32]    [__B_|__B_|__B_|__B_|...]   [ RGBA ]
-			// [A Sum32]    [___A|___A|___A|___A|...]   [ RGBA ]
-			//  Sums           Masks                    [ RGBA ]
-			//                                          [  ... ]
-			//                                           Pixels
-			// This is not as optimal as I would hope as this is basically
-			// doing a vector-matrix multiplication rather than matrix-matrix
-			// If it was possible to "transpose" the individual RGBA elements
-			// such that entire rows would just have R, G, B, then this would
-			// scale much better.
-			// Possibly multiple sum-tiles are needed. If the "2048 INT8
-			// operations per-clock" figure is true, then it might be better to
-			// have entire tiles for each of the R G B A sums and do the
-			// expensive unpacking and summing into the outer 64-bit sums for
-			// every 0x0x101010 iterations. - Sun Nov 24 01:49:05 PM PST 2024
+			// [R Sum32|R Sum32|...]    [R___|R___|...]   [ RGBA | RGBA | ... ]
+			// [G Sum32|G Sum32|...] += [_G__|_G__|...] * [ RGBA | RGBA | ... ]
+			// [B Sum32|B Sum32|...]    [__B_|__B_|...]   [ RGBA | RGBA | ... ]
+			// [A Sum32|A Sum32|...]    [___A|___A|...]   [ RGBA | RGBA | ... ]
+			//  Sums                      Masks           [ RGBA | RGBA | ... ]
+			//                                            [  ... |  ... | ... ]
+			//                                             Pixels
 			__tile_dpbuud(&SumTile, MaskTile, PixelTile);
 		}
 
 		// Store vector of 32-bit sums
-		__m128i LocalSums32;
-		__tile_stored(&LocalSums32, 4, SumTile);
 
-		// Add to the outer 64-bit sums
-		RedGreenSum64 = _mm_add_epi64(
-			RedGreenSum64, _mm_unpacklo_epi32(LocalSums32, _mm_setzero_si128())
+		std::array<std::uint32_t, 4 * 16> LocalSums;
+		__tile_stored(&LocalSums, sizeof(std::uint32_t) * 16, SumTile);
+		std::uint64_t RedSum64   = 0;
+		std::uint64_t GreenSum64 = 0;
+		std::uint64_t BlueSum64  = 0;
+		std::uint64_t AlphaSum64 = 0;
+		for( std::size_t ColIndex = 0; ColIndex < 16; ++ColIndex )
+		{
+			const std::uint32_t& RedSum   = LocalSums[ColIndex + (0U * 16ULL)];
+			const std::uint32_t& GreenSum = LocalSums[ColIndex + (1U * 16ULL)];
+			const std::uint32_t& BlueSum  = LocalSums[ColIndex + (2U * 16ULL)];
+			const std::uint32_t& AlphaSum = LocalSums[ColIndex + (3U * 16ULL)];
+
+			RedSum64 += RedSum;
+			GreenSum64 += GreenSum;
+			BlueSum64 += BlueSum;
+			AlphaSum64 += AlphaSum;
+		}
+
+		RedGreenSum64 += _mm_add_epi64(
+			RedGreenSum64, _mm_set_epi64x(GreenSum64, RedSum64)
 		);
-		BlueAlphaSum64 = _mm_add_epi64(
-			BlueAlphaSum64, _mm_unpackhi_epi32(LocalSums32, _mm_setzero_si128())
+		BlueAlphaSum64 += _mm_add_epi64(
+			BlueAlphaSum64, _mm_set_epi64x(AlphaSum64, BlueSum64)
 		);
 	}
 
